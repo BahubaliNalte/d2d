@@ -64,6 +64,7 @@ const adminSections = [
 export default function AdminPage() {
 	const [section, setSection] = useState(adminSections[0].key);
 	const [premiumPrice, setPremiumPrice] = useState<number | null>(null);
+	const [premiumNotifEnabled, setPremiumNotifEnabled] = useState<boolean | null>(null);
 	const [priceInput, setPriceInput] = useState("");
 	const [priceLoading, setPriceLoading] = useState(false);
 	const [priceMsg, setPriceMsg] = useState("");
@@ -102,6 +103,13 @@ export default function AdminPage() {
 				setPremiumPrice(snap.val());
 			}
 		});
+
+		// Fetch current premium notification flag
+		const notifRef = dbRef(database, "AppConfig/ShowPremiumNotifications");
+		get(notifRef).then((snap) => {
+			if (snap.exists()) setPremiumNotifEnabled(!!snap.val());
+			else setPremiumNotifEnabled(true);
+		}).catch(() => setPremiumNotifEnabled(true));
 
 		const unsubscribe = onAuthStateChanged(auth, async (user) => {
 			if (user) {
@@ -229,6 +237,29 @@ export default function AdminPage() {
 							<p className="mb-4 text-slate-600 text-sm">
 								Create and manage notifications and announcements.
 							</p>
+							{/* Toggle for Premium Notifications visibility */}
+							<div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+								<div>
+									<div className="font-semibold text-slate-800">Premium Notifications</div>
+									<div className="text-xs text-slate-600">Enable or disable the premium user pop-up notifications across the site.</div>
+								</div>
+								<div>
+									<button
+										disabled={premiumNotifEnabled === null}
+										onClick={async () => {
+											try {
+												await set(dbRef(database, "AppConfig/ShowPremiumNotifications"), !premiumNotifEnabled);
+												setPremiumNotifEnabled(!premiumNotifEnabled);
+											} catch (err) {
+												// ignore
+											}
+										}}
+										className={`px-4 py-2 rounded-xl font-semibold ${premiumNotifEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-800'}`}
+									>
+										{premiumNotifEnabled ? 'Enabled' : 'Disabled'}
+									</button>
+								</div>
+							</div>
 							<AnnouncementAdmin />
 						</div>
 					)}

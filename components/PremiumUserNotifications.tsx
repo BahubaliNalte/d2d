@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { database } from "@/lib/firebase";
-import { ref, onValue } from "firebase/database";
+import { ref, onValue, get } from "firebase/database";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface User {
@@ -3339,6 +3339,7 @@ export default function PremiumUserNotifications() {
   const [fakeTime, setFakeTime] = useState("");
   const [avatarColor, setAvatarColor] = useState(AVATAR_COLORS[0]);
   const [dismissed, setDismissed] = useState(false);
+  const [enabled, setEnabled] = useState<boolean>(true);
 
   // Fetch users from Firebase
   useEffect(() => {
@@ -3381,6 +3382,15 @@ export default function PremiumUserNotifications() {
         unsubscribe();
       } catch (e) { }
     };
+  }, []);
+
+  // fetch feature flag for showing premium notifications
+  useEffect(() => {
+    const flagRef = ref(database, "AppConfig/ShowPremiumNotifications");
+    get(flagRef).then((snap) => {
+      if (snap.exists()) setEnabled(!!snap.val());
+      else setEnabled(true);
+    }).catch(() => setEnabled(true));
   }, []);
 
   const showNotification = useCallback(() => {
@@ -3428,6 +3438,8 @@ export default function PremiumUserNotifications() {
     setDismissed(true);
     setVisible(false);
   };
+
+  if (!enabled) return null;
 
   return (
     <>

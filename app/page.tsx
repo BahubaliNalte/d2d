@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { FaInstagram, FaFacebook, FaLinkedin, FaBars, FaBell, FaWhatsapp, FaTimes, FaArrowRight, FaGraduationCap, FaCheckCircle, FaMapMarkerAlt, FaPhone, FaEnvelope } from "react-icons/fa";
+import { FaInstagram, FaFacebook, FaLinkedin, FaBars, FaBell, FaWhatsapp, FaTimes, FaArrowRight, FaGraduationCap, FaCheckCircle, FaMapMarkerAlt, FaPhone, FaEnvelope, FaBullseye, FaClipboardList, FaHandshake, FaStar, FaHeart } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getDatabase, ref, get, onValue } from "firebase/database";
@@ -76,10 +76,10 @@ export default function HomePage() {
   ];
 
   const features = [
-    { icon: "🎯", title: "Cutoff Predictions", desc: "Know your chances before choice filling with real data-backed insights." },
-    { icon: "🔔", title: "Live Merit Alerts", desc: "Instant notifications for merit list releases, document rounds & deadlines." },
-    { icon: "📋", title: "Document Help", desc: "Eligibility checks, certificate verification & application support." },
-    { icon: "🤝", title: "1:1 Mentorship", desc: "Talk to seniors who took the DSE route and know the journey firsthand." },
+    { icon: FaBullseye, title: "Cutoff Predictions", desc: "Know your chances before choice filling with real data-backed insights." },
+    { icon: FaBell, title: "Live Merit Alerts", desc: "Instant notifications for merit list releases, document rounds & deadlines." },
+    { icon: FaClipboardList, title: "Document Help", desc: "Eligibility checks, certificate verification & application support." },
+    { icon: FaHandshake, title: "1:1 Mentorship", desc: "Talk to seniors who took the DSE route and know the journey firsthand." },
   ];
 
   return (
@@ -164,7 +164,7 @@ export default function HomePage() {
           className="float absolute top-32 right-6 md:right-24 hidden md:flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-4 py-2.5 shadow-sm"
           initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1 }}
         >
-          <span className="text-lg">🎓</span>
+          <FaGraduationCap className="text-slate-900 text-lg" />
           <div>
             <p className="text-xs font-semibold text-slate-800">DSE Seats Available</p>
             <p className="text-[10px] text-slate-400">Maharashtra 2025–26</p>
@@ -177,7 +177,7 @@ export default function HomePage() {
           initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.3 }}
           style={{ animationDelay: "1.5s" }}
         >
-          <span className="text-lg">✅</span>
+          <FaCheckCircle className="text-emerald-500 text-lg" />
           <div>
             <p className="text-xs font-semibold text-slate-800">1000+ Students Placed</p>
             <p className="text-[10px] text-slate-400">98% success rate</p>
@@ -219,17 +219,19 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.4 }}
             className="flex flex-col sm:flex-row justify-center gap-4"
           >
-            <Link href="/counselling"
+            <Link
+              href="/counselling"
               className="btn-primary inline-flex items-center justify-center gap-2.5 px-8 py-4 text-base font-semibold rounded-2xl transition-all duration-300 shadow-lg shadow-slate-900/20"
             >
               <FaGraduationCap className="text-lg" />
               Start Free Counselling
               <FaArrowRight className="text-sm" />
             </Link>
-            <Link href="/counselling/premium"
+            <Link
+              href="/counselling/premium"
               className="btn-outline inline-flex items-center justify-center gap-2.5 px-8 py-4 text-base font-semibold rounded-2xl transition-all duration-300"
             >
-              <span>⭐</span>
+              <FaStar className="text-amber-500 text-sm" />
               View Premium Plans
             </Link>
           </motion.div>
@@ -253,9 +255,9 @@ export default function HomePage() {
             { value: "24 / 7", label: "Support", sub: "Always available" },
           ].map((s, i) => (
             <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} viewport={{ once: true }}>
-              <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white">{s.value}</div>
-              <div className="text-xs sm:text-sm font-semibold text-slate-200 mt-1">{s.label}</div>
-              <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5">{s.sub}</div>
+              <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900">{s.value}</div>
+              <div className="text-xs sm:text-sm font-semibold text-slate-700 mt-1">{s.label}</div>
+              <div className="text-[10px] sm:text-xs text-slate-500 mt-0.5">{s.sub}</div>
             </motion.div>
           ))}
         </div>
@@ -311,9 +313,11 @@ export default function HomePage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
                 viewport={{ once: true }}
-                className="card-hover bg-white rounded-2xl p-6 border border-slate-200 transition-all duration-300"
+                className="card-hover bg-white rounded-2xl p-6 border border-slate-200 transition-all duration-300 flex flex-col items-start"
               >
-                <div className="text-3xl mb-4">{f.icon}</div>
+                <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-4">
+                  {React.createElement(f.icon, { className: "text-2xl text-slate-950" })}
+                </div>
                 <h3 className="font-bold text-slate-900 mb-2 text-sm">{f.title}</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">{f.desc}</p>
               </motion.div>
@@ -333,7 +337,6 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               "Completed diploma from a polytechnic in Maharashtra",
-              "Appearing for or already have MHT-CET / JEEMAINS percentile",
               "Want to join B.E. / B.Tech in Direct Second Year (DSE)",
               "Confused about college choices, cutoffs & the CAP process",
               "Need help with document verification & eligibility",
@@ -354,7 +357,8 @@ export default function HomePage() {
           </div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mt-12">
-            <Link href="/counselling"
+            <Link
+              href="/counselling"
               className="inline-flex items-center gap-2.5 px-8 py-4 text-base font-semibold text-white bg-slate-900 rounded-2xl hover:bg-black shadow-lg shadow-slate-900/20 transition-all duration-300 hover:-translate-y-0.5">
               Yes, I Need Counselling <FaArrowRight className="text-sm" />
             </Link>
@@ -375,17 +379,17 @@ export default function HomePage() {
       </section>
 
       {/* ===== CTA BANNER ===== */}
-      <section className="py-20 px-4 sm:px-6 stat-bg relative overflow-hidden" id="cta">
+      <section className="py-20 px-4 sm:px-6 bg-white relative overflow-hidden" id="cta">
         <div className="absolute inset-0 hero-grid opacity-10 pointer-events-none" />
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="relative max-w-2xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 mb-6">
             <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-            <span className="text-xs font-semibold text-white">Admissions 2025–26 Open</span>
+            <span className="text-xs font-semibold text-black">Admissions 2025–26 Open</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white mb-4 leading-tight">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-black mb-4 leading-tight">
             Don't leave your DSE seat<br />to chance
           </h2>
-          <p className="text-slate-300 mb-10 text-base leading-relaxed">
+          <p className="text-black mb-10 text-base leading-relaxed">
             Get expert guidance and secure your Direct Second Year B.E. seat at the best engineering college for your profile.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
@@ -394,8 +398,8 @@ export default function HomePage() {
               Get Started Free <FaArrowRight className="text-sm" />
             </Link>
             <Link href="/counselling/premium"
-              className="inline-flex items-center justify-center gap-2.5 px-8 py-4 text-base font-semibold text-white border-2 border-white/30 rounded-2xl hover:border-white/60 transition-all duration-300 hover:-translate-y-0.5">
-              ⭐ Premium Plans
+              className="inline-flex items-center justify-center gap-2.5 px-8 py-4 text-base font-semibold bg-amber-500 text-black rounded-2xl hover:bg-amber-600 transition-all duration-300 hover:-translate-y-0.5">
+              <FaStar className="text-black text-sm shrink-0" /> Premium Plans
             </Link>
           </div>
         </motion.div>
@@ -432,7 +436,13 @@ export default function HomePage() {
               <h4 className="font-bold text-xs text-slate-400 uppercase tracking-widest mb-5">Quick Links</h4>
               <div className="space-y-3">
                 {[["Counselling", "/counselling"], ["Premium Plans", "/counselling/premium"], ["Scholarships", "/counselling/scholarships"], ["Notifications", "/counselling/notifications"]].map(([label, href]) => (
-                  <Link key={href} href={href} className="block text-sm text-slate-400 hover:text-white transition">{label}</Link>
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`block text-sm transition ${label === "Premium Plans" ? "text-white font-semibold" : "text-slate-400 hover:text-white"}`}
+                  >
+                    {label}
+                  </Link>
                 ))}
               </div>
             </div>
@@ -440,7 +450,7 @@ export default function HomePage() {
             <div>
               <h4 className="font-bold text-xs text-slate-400 uppercase tracking-widest mb-5">Resources</h4>
               <div className="space-y-3">
-                {[["Maharashtra Colleges", "/counselling/maharashtra-colleges"], ["College Predictor", "/counselling/predictor"], ["Best College List", "/counselling/best-college-list"], ["Mentorship", "/counselling/mentorship"]].map(([label, href]) => (
+                {[["Maharashtra Colleges", "/counselling/maharashtra-colleges"], ["College Predictor", "/counselling/predictor"]].map(([label, href]) => (
                   <Link key={href} href={href} className="block text-sm text-slate-400 hover:text-white transition">{label}</Link>
                 ))}
               </div>
@@ -454,13 +464,16 @@ export default function HomePage() {
                 <a href="mailto:diplomatwodegree@gmail.com" className="flex items-start gap-2 hover:text-white transition">
                   <FaEnvelope className="mt-1 shrink-0" /><span>diplomatwodegree@gmail.com</span>
                 </a>
+                <a href="mailto:support.diploma2degree@gmail.com" className="flex items-start gap-2 hover:text-white transition">
+                  <FaEnvelope className="mt-1 shrink-0" /><span>support.diploma2degree@gmail.com</span>
+                </a>
               </div>
             </div>
           </div>
 
           <div className="border-t border-slate-800 pt-6 flex flex-col sm:flex-row justify-between items-center gap-2">
-            <p className="text-xs text-slate-500">&copy; {new Date().getFullYear()} Diploma2Degree. All rights reserved.</p>
-            <p className="text-xs text-slate-600">Made with ❤️ for diploma students in Maharashtra</p>
+            
+            <p className="text-xs text-slate-600">Made with <FaHeart className="text-red-500 inline mx-0.5" /> for diploma students in Maharashtra</p>
           </div>
         </div>
       </footer>

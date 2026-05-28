@@ -26,6 +26,7 @@ interface College {
 const unique = (array: string[]) => Array.from(new Set(array));
 
 export default function PredictorPage() {
+  const FEATURE_KEY = "predictor";
   const [colleges, setColleges] = useState<College[]>([]);
   const [score, setScore] = useState<number | null>(null);
   // Branch filtering states
@@ -282,6 +283,19 @@ export default function PredictorPage() {
 
     if (!isPlusMember) {
       if (usageCount >= 4) {
+        // Mark that the user reached the free limit so we can show
+        // an upgrade prompt when they return to this feature.
+        try {
+          if (typeof window !== "undefined") {
+            localStorage.setItem(`limitHit:${FEATURE_KEY}`, Date.now().toString());
+          }
+          const user = auth.currentUser;
+          if (user) {
+            set(ref(database, `Users/${user.uid}/limitHits/${FEATURE_KEY}`), true);
+          }
+        } catch (e) {
+          // best-effort only
+        }
         setShowPremiumPopup(true);
         return;
       }
@@ -356,6 +370,22 @@ export default function PredictorPage() {
     setSubmitted(true);
   };
 
+  // When the page mounts or usageCount changes, if the user previously hit
+  // the limit for this feature, show the upgrade popup so they see the CTA
+  // when they come back to the feature.
+  useEffect(() => {
+    try {
+      if (!isPlusMember && isLoggedIn && usageCount >= 4) {
+        const wasHit = typeof window !== "undefined" && localStorage.getItem(`limitHit:${FEATURE_KEY}`);
+        if (wasHit) {
+          setShowPremiumPopup(true);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [isPlusMember, isLoggedIn, usageCount]);
+
   return (
     <main className="min-h-screen bg-white px-6 md:px-20 py-16 font-poppins">
       <motion.h1
@@ -366,6 +396,56 @@ export default function PredictorPage() {
       >
         Rank Wise Prediction using Our AI Model
       </motion.h1>
+
+      <AnimatePresence>
+        {showPremiumPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+          >
+            <div className="absolute inset-0 bg-black/40" onClick={() => setShowPremiumPopup(false)} />
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 10, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              className="relative z-10 bg-white rounded-2xl p-6 max-w-md w-full shadow-xl"
+            >
+              <h3 className="text-lg font-bold">Free limit reached</h3>
+              <p className="mt-2 text-sm text-slate-700">You've reached the free predictions limit for this feature. Upgrade to Premium for unlimited access and priority features.</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button onClick={() => setShowPremiumPopup(false)} className="px-4 py-2 rounded bg-slate-200">Close</button>
+                <Link href="/counselling/premium" className="px-4 py-2 rounded bg-slate-900 text-white">Upgrade to Premium</Link>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Free Usage Counter - Only show for non-premium users */}
+      {isLoggedIn && !isPlusMember && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-3xl mx-auto mb-8 bg-slate-50 border border-slate-200 rounded-2xl p-4"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-700">Free Predictions Used</span>
+            <span className="text-sm font-bold text-slate-900">{usageCount} / 4</span>
+          </div>
+          <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
+            <div 
+              className="bg-slate-900 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${(usageCount / 4) * 100}%` }}
+            ></div>
+          </div>
+          {usageCount >= 4 && (
+            <p className="text-xs text-slate-600 mt-2">You've reached your free limit. <Link href="/counselling/premium" className="text-slate-900 font-bold hover:underline">Upgrade to Premium</Link> for unlimited predictions.</p>
+          )}
+        </motion.div>
+      )}
 
       {/* Input Form */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200">

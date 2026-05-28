@@ -152,7 +152,6 @@ const DOCUMENT_DATABASE: DocumentItem[] = [
 ];
 
 export default function DocumentRequiredPage() {
-	const [mounted, setMounted] = useState(false);
 	
 	// User Selections
 	const [caste, setCaste] = useState<string>("Open");
@@ -167,7 +166,6 @@ export default function DocumentRequiredPage() {
 	const [checkedDocs, setCheckedDocs] = useState<Record<string, boolean>>({});
 
 	useEffect(() => {
-		setMounted(true);
 		// Load checklist status from localStorage if available
 		try {
 			const saved = localStorage.getItem("d2d-document-checklist");
@@ -237,8 +235,6 @@ export default function DocumentRequiredPage() {
 	const handlePrint = () => {
 		window.print();
 	};
-
-	if (!mounted) return null;
 
 	// Document category color tags
 	const getCategoryBadge = (category: string) => {

@@ -1,13 +1,14 @@
 "use client";
 
+import React from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Script from "next/script";
 import { auth, database } from "@/lib/firebase";
 import { ref as dbRef, set, onValue, get } from "firebase/database";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
-import { FaCrown, FaCheck, FaLock, FaShieldAlt, FaMapMarkedAlt, FaGraduationCap, FaComments, FaChartLine } from "react-icons/fa";
+import { FaCrown, FaCheck, FaLock, FaShieldAlt, FaMapMarkedAlt, FaGraduationCap, FaChartLine } from "react-icons/fa";
 
 // ─── Data ──────────────────────────────────────────────────────────────────────
 // Removed FAQs as requested
@@ -23,53 +24,29 @@ const fallbackStories = [
   { student: "Sayali Patil", score: "93.15%", clg: "PCCOE, Pune", branch: "IT", type: "CAP Rd 1", linkedin: "" },
 ];
 
-const memberFeatures = [
-  {
-    title: "1:1 Mentorship",
-    desc: "Personal guidance from seasoned experts for every step of your journey.",
-    href: "/counselling/mentorship",
-    cta: "Book Session",
-    icon: <FaGraduationCap className="text-xl" />,
-  },
-  {
-    title: "AI-Based College List",
-    desc: "Smart, data-driven college suggestions tailored to your exact profile.",
-    href: "/counselling/best-college-list",
-    cta: "Request List",
-    icon: <FaMapMarkedAlt className="text-xl" />,
-  },
-  {
-    title: "Direct Chat",
-    desc: "Instant access to counsellors — get answers when you need them most.",
-    href: "/counselling/direct-chat",
-    cta: "Start Chat",
-    icon: <FaComments className="text-xl" />,
-  },
-];
-
 const bentoFeatures = [
   {
     title: "1:1 Expert Mentorship",
     desc: "A dedicated senior mentor assigned to guide your every decision — from option forms to lock-in strategy.",
-    icon: <FaGraduationCap className="text-3xl text-slate-900" />,
+    icon: FaGraduationCap,
     span: "lg:col-span-2",
   },
   {
     title: "AI College Prediction",
     desc: "Deterministic matching using real DSE intake data to find your perfect college.",
-    icon: <FaMapMarkedAlt className="text-3xl text-slate-900" />,
+    icon: FaMapMarkedAlt,
     span: "lg:col-span-1",
   },
   {
     title: "Career Dashboard",
     desc: "Interactive portal to visualize your academic and career trajectory in real-time.",
-    icon: <FaChartLine className="text-3xl text-slate-900" />,
+    icon: FaChartLine,
     span: "lg:col-span-1",
   },
   {
     title: "All CAP Rounds Coverage",
     desc: "Complete support through all admission rounds — start to finish, no gaps.",
-    icon: <FaShieldAlt className="text-3xl text-slate-900" />,
+    icon: FaShieldAlt,
     span: "lg:col-span-2",
   },
 ];
@@ -91,6 +68,9 @@ export default function PremiumPage() {
   const [phoneInput, setPhoneInput] = useState("");
   const [premiumPrice, setPremiumPrice] = useState<number | null>(null);
   const [stories, setStories] = useState(fallbackStories);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [cachedPhone, setCachedPhone] = useState<string | null>(null);
+  const isProcessingRef = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -133,78 +113,283 @@ export default function PremiumPage() {
     return () => unsubscribe();
   }, []);
 
-  const handleBuyNow = async () => {
-    const user = auth.currentUser;
-    if (!user) { alert("Please login to continue with the payment."); return; }
-    let phone = user.phoneNumber || "";
-    if (!phone) {
-      const snap = await get(dbRef(database, 'Users/' + user.uid + '/phone'));
-      if (snap.exists()) phone = snap.val();
+  const handleBuyNow = useCallback(async () => {
+    // Debounce - prevent multiple clicks
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    setIsProcessing(true);
+
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        alert("Please login to continue with the payment.");
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        return;
+      }
+
+      // Try to get phone - use cached value first
+      let phone = user.phoneNumber || cachedPhone || "";
+      
+      if (!phone) {
+        const snap = await get(dbRef(database, 'Users/' + user.uid + '/phone'));
+        if (snap.exists()) {
+          phone = snap.val();
+          setCachedPhone(phone);
+        }
+      }
+
+      if (user.providerData.some((p) => p.providerId === "google.com") && !phone) {
+        setShowPhoneModal(true);
+        setPhonePrompt("Please enter your phone number before purchasing premium membership.");
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        return;
+      }
+
+      startRazorpay(phone);
+    } catch (error) {
+      console.error("Error in handleBuyNow:", error);
+      isProcessingRef.current = false;
+      setIsProcessing(false);
     }
-    if (user.providerData.some((p) => p.providerId === "google.com") && !phone) {
-      setShowPhoneModal(true);
-      setPhonePrompt("Please enter your phone number before purchasing premium membership.");
+  }, [cachedPhone]);
+
+  const handleSavePhoneAndPay = useCallback(async () => {
+    if (isProcessingRef.current) return;
+    
+    const user = auth.currentUser;
+    if (!user) return;
+    if (!/^\d{10}$/.test(phoneInput)) {
+      setPhonePrompt("Please enter a valid 10-digit phone number.");
       return;
     }
-    startRazorpay(phone);
-  };
 
-  const handleSavePhoneAndPay = async () => {
+    isProcessingRef.current = true;
+    try {
+      await set(dbRef(database, 'Users/' + user.uid + '/phone'), phoneInput);
+      setCachedPhone(phoneInput);
+      setShowPhoneModal(false);
+      startRazorpay(phoneInput);
+    } catch (error) {
+      console.error("Error saving phone:", error);
+      toast.error("Failed to save phone number");
+      isProcessingRef.current = false;
+    }
+  }, [phoneInput]);
+
+  const startRazorpay = useCallback(async (phone: string) => {
     const user = auth.currentUser;
     if (!user) return;
-    if (!/^\d{10}$/.test(phoneInput)) { setPhonePrompt("Please enter a valid 10-digit phone number."); return; }
-    await set(dbRef(database, 'Users/' + user.uid + '/phone'), phoneInput);
-    setShowPhoneModal(false);
-    startRazorpay(phoneInput);
-  };
+    if (premiumPrice === null) {
+      toast.error("Unable to fetch premium price. Please try again later.");
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      return;
+    }
 
-  const startRazorpay = async (phone: string) => {
-    const user = auth.currentUser;
-    if (!user) return;
-    if (premiumPrice === null) { toast.error("Unable to fetch premium price. Please try again later."); return; }
     let orderId = null;
     try {
       const orderRes = await fetch("/api/create-razorpay-order", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount: premiumPrice * 100, currency: "INR" }),
       });
       const orderData = await orderRes.json();
       if (!orderData.success) throw new Error("Order creation failed");
       orderId = orderData.order.id;
-    } catch { toast.error("Failed to create payment order. Please try again later."); return; }
-    const options = {
-      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY as string,
-      amount: premiumPrice * 100, currency: "INR",
-      name: "Diploma2Degree Premium", description: "Premium Counselling Package",
-      image: "/Web Images/d2d-logo1.png", order_id: orderId,
-      handler: async function (response: any) {
+    } catch (error) {
+      console.error("Order creation error:", error);
+      toast.error("Failed to create payment order. Please try again later.");
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      return;
+    }
+
+    const handlePaymentResponse = async (response: any) => {
+      try {
         const verifyRes = await fetch("/api/verify-razorpay", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ razorpay_payment_id: response.razorpay_payment_id, razorpay_order_id: response.razorpay_order_id, razorpay_signature: response.razorpay_signature }),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_signature: response.razorpay_signature,
+          }),
         });
         const verifyData = await verifyRes.json();
         if (verifyData.success) {
-          set(dbRef(database, "PlusMembers/" + user.uid), {
-            paymentId: response.razorpay_payment_id, uid: user.uid, name: user.displayName,
-            email: user.email, phone, purchasedAt: new Date().toISOString(), price: premiumPrice, timestamp: Date.now(),
-          }).then(() => { toast.success("Payment successful! Redirecting..."); setTimeout(() => router.push("/thank-you"), 2000); })
-            .catch(() => toast.error("Payment saved, but something went wrong."));
-        } else toast.error("Payment verification failed. Please contact support.");
-      },
+          await set(dbRef(database, "PlusMembers/" + user.uid), {
+            paymentId: response.razorpay_payment_id,
+            uid: user.uid,
+            name: user.displayName,
+            email: user.email,
+            phone,
+            purchasedAt: new Date().toISOString(),
+            price: premiumPrice,
+            timestamp: Date.now(),
+          });
+          toast.success("Payment successful! Redirecting...");
+          setTimeout(() => router.push("/thank-you"), 1000);
+        } else {
+          toast.error("Payment verification failed. Please contact support.");
+        }
+      } catch (error) {
+        console.error("Payment verification error:", error);
+        toast.error("Payment verification failed. Please contact support.");
+      } finally {
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+      }
+    };
+
+    const options = {
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY || "",
+      amount: premiumPrice * 100,
+      currency: "INR",
+      name: "Diploma2Degree Premium",
+      description: "Premium Counselling Package",
+      image: "/Web Images/d2d-logo1.png",
+      order_id: orderId,
+      handler: handlePaymentResponse,
       prefill: { name: user.displayName || "", email: user.email || "", contact: phone },
       theme: { color: "#111827" },
+      modal: {
+        ondismiss: () => {
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+        },
+      },
     };
 
     // @ts-ignore
     new window.Razorpay(options).open();
-  };
+  }, [premiumPrice, router]);
 
   return (
-            </motion.div>
-          </div>
-        </section>
+    <main className="min-h-screen bg-white overflow-x-hidden">
+      <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
-        {/* ══════════════════════════════════════════════════════════════
+      {/* Modal for phone input */}
+      <AnimatePresence>
+        {showPhoneModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 10 }}
+              className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-slate-200"
+            >
+              <h3 className="text-2xl font-bold text-slate-900 mb-2">Enter Your Phone</h3>
+              <p className="text-slate-600 text-sm mb-6">{phonePrompt}</p>
+              <input
+                type="tel"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="10-digit phone number"
+                maxLength={10}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl mb-4 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-100"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowPhoneModal(false)}
+                  disabled={isProcessing}
+                  className={`flex-1 px-4 py-2.5 rounded-lg font-bold transition ${
+                    isProcessing
+                      ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-900"
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePhoneAndPay}
+                  disabled={isProcessing}
+                  className={`flex-1 px-4 py-2.5 rounded-lg font-bold transition flex items-center justify-center gap-2 ${
+                    isProcessing
+                      ? "bg-slate-400 text-slate-200 cursor-not-allowed"
+                      : "bg-slate-900 hover:bg-black text-white"
+                  }`}
+                >
+                  {isProcessing ? (
+                    <>
+                      <span className="w-3 h-3 rounded-full border-2 border-slate-200 border-t-white animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    "Continue"
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════════════
+          HERO SECTION
+      ══════════════════════════════════════════════════════════════ */}
+      <section className="relative min-h-screen flex items-center justify-center pt-24 pb-12 px-6 md:px-12 bg-slate-50 border-b border-slate-200 overflow-hidden">
+        {/* Background */}
+        <div className="absolute inset-0 opacity-30 pointer-events-none">
+          <div className="absolute top-20 right-0 w-96 h-96 bg-blue-100 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-100 rounded-full blur-3xl" />
+        </div>
+
+        <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="relative max-w-3xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full px-4 py-2 mb-6 shadow-sm"
+          >
+            <FaCrown className="text-slate-900" />
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-700">Premium Membership</span>
+          </motion.div>
+
+          <h1 className="text-5xl md:text-6xl font-black text-slate-900 mb-6 leading-[1.1] tracking-tight">
+            Unlock Your<br />
+            <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
+              Perfect DSE Seat
+            </span>
+          </h1>
+
+          <p className="text-lg md:text-xl text-slate-600 max-w-lg mx-auto mb-10 leading-relaxed font-medium">
+            Expert 1:1 mentorship, AI-powered college matching, and full CAP round support. Join 500+ successful students already admitted to their dream colleges.
+          </p>
+
+          <motion.button
+            whileHover={{ scale: isProcessing ? 1 : 1.05 }}
+            whileTap={{ scale: isProcessing ? 1 : 0.95 }}
+            onClick={handleBuyNow}
+            disabled={isProcessing}
+            className={`inline-flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-lg transition-all shadow-2xl shadow-slate-900/30 ${
+              isProcessing
+                ? "bg-slate-400 text-slate-200 cursor-not-allowed"
+                : "bg-slate-900 hover:bg-black text-white"
+            }`}
+          >
+            {isProcessing ? (
+              <>
+                <span className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-white animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <FaCrown />
+                Join Premium
+              </>
+            )}
+          </motion.button>
+        </motion.div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════
             SUCCESS STORIES TICKER
         ══════════════════════════════════════════════════════════════ */}
         <div className="bg-slate-50 py-10 border-b border-slate-200 overflow-hidden relative">
@@ -236,18 +421,11 @@ export default function PremiumPage() {
                     <span className="font-bold text-slate-900 text-sm flex items-center gap-2">
                       {s.student}
                       {s.linkedin && (
-                        <a href={s.linkedin} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 transition-colors" title="View LinkedIn">
+                        <a href={s.linkedin} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 transition-colors ml-2" title="View LinkedIn">
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
                           </svg>
                         </a>
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      className="mt-4 w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-900 font-semibold"
-                      onClick={() => router.back()}
-                    >
-                      ← Back
-                    </motion.button>
                       )}
                     </span>
                     <span className="text-xs font-medium text-slate-500">{s.clg}</span>
@@ -277,8 +455,8 @@ export default function PremiumPage() {
                   key={i}
                   className={`${item.span} group bg-slate-50 rounded-3xl p-8 border border-slate-200 hover:border-slate-300 transition-colors duration-300`}
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm group-hover:scale-105 transition-transform duration-300">
-                    {item.icon}
+                    <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm group-hover:scale-105 transition-transform duration-300">
+                      {React.createElement(item.icon, { className: "text-3xl text-slate-900" })}
                   </div>
                   <h3 className="font-bold text-slate-900 text-xl mb-3">{item.title}</h3>
                   <p className="text-slate-600 text-sm leading-relaxed font-medium">{item.desc}</p>
@@ -308,28 +486,68 @@ export default function PremiumPage() {
               </div>
             ) : isPlusMember ? (
               /* ── Member Dashboard ── */
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {memberFeatures.map((f, i) => (
-                  <a
-                    href={f.href}
-                    key={i}
-                    className="group bg-white rounded-3xl p-8 border border-slate-200 hover:border-slate-900 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 block"
-                  >
-                    <div className="w-12 h-12 rounded-xl bg-slate-50 text-slate-900 border border-slate-200 flex items-center justify-center mb-6 group-hover:bg-slate-900 group-hover:text-white transition-colors duration-300">
-                      {f.icon}
-                    </div>
-                    <h3 className="text-lg font-bold text-slate-900 mb-2">{f.title}</h3>
-                    <p className="text-sm text-slate-500 leading-relaxed mb-8">{f.desc}</p>
-                    <div className="inline-flex items-center gap-2 font-bold text-sm text-slate-900 group-hover:underline underline-offset-4">
-                      {f.cta} &rarr;
-                    </div>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              /* ── Pricing Split View ── */
               <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col lg:flex-row">
 
+                {/* Left side: What's included */}
+                <div className="lg:w-3/5 p-8 md:p-12 border-b lg:border-b-0 lg:border-r border-slate-200">
+                  <h3 className="text-2xl font-extrabold text-slate-900 mb-2">D2D Premium Pass</h3>
+                  <p className="text-slate-500 mb-8 font-medium">Everything you need to secure your seat.</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
+                    {checklist.map((item) => (
+                      <div key={item} className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <FaCheck className="text-[10px] text-slate-900" />
+                        </div>
+                        <span className="text-slate-700 font-semibold text-sm">{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right side: Member Status Card */}
+                <div className="lg:w-2/5 p-8 md:p-12 bg-gradient-to-br from-emerald-50 to-slate-50 flex flex-col justify-center border-l border-emerald-100">
+                  <div className="inline-flex items-center gap-2 mb-6 bg-white px-4 py-2 rounded-full w-fit">
+                    <FaCheck className="text-emerald-600 text-lg" />
+                    <span className="text-sm font-bold text-emerald-700 uppercase tracking-wider">Active Member</span>
+                  </div>
+                  
+                  <h4 className="text-2xl font-extrabold text-slate-900 mb-2 flex items-center gap-2">
+                    You're All Set! <FaCrown className="text-amber-500 animate-pulse text-xl" />
+                  </h4>
+                  <p className="text-slate-600 text-sm mb-8 leading-relaxed">
+                    Your premium membership is active. Access all exclusive features and get personalized guidance for your DSE journey.
+                  </p>
+
+                  <div className="space-y-3 mb-8">
+                    <button
+                      onClick={() => router.push('/counselling/mentorship')}
+                      className="w-full px-6 py-3 rounded-xl bg-slate-900 hover:bg-black text-white font-semibold transition-all shadow-lg"
+                    >
+                      Book Mentorship Session
+                    </button>
+                    <button
+                      onClick={() => router.push('/counselling/best-college-list')}
+                      className="w-full px-6 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-900 font-semibold border-2 border-slate-200 transition-all"
+                    >
+                      Get AI College List
+                    </button>
+                    <button
+                      onClick={() => router.push('/counselling/direct-chat')}
+                      className="w-full px-6 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-900 font-semibold border-2 border-slate-200 transition-all"
+                    >
+                      Direct Chat with Counsellors
+                    </button>
+                  </div>
+
+                  <p className="text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Premium benefits last for entire admission cycle
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* ── Non-Member Pricing ── */
+              <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col lg:flex-row">
                 {/* Left side: What's included */}
                 <div className="lg:w-3/5 p-8 md:p-12 border-b lg:border-b-0 lg:border-r border-slate-200">
                   <h3 className="text-2xl font-extrabold text-slate-900 mb-2">D2D Premium Pass</h3>
@@ -353,7 +571,7 @@ export default function PremiumPage() {
                     <span className="text-slate-500 line-through font-semibold">₹1499</span>
                     {premiumPrice !== null && (
                       <span className="ml-3 inline-block px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider">
-                        Save {Math.round((1 - premiumPrice / 999) * 100)}%
+                        Save {Math.round((1 - premiumPrice / 1499) * 100)}%
                       </span>
                     )}
                   </div>
@@ -366,10 +584,24 @@ export default function PremiumPage() {
 
                   <button
                     onClick={handleBuyNow}
-                    className="w-full py-4 rounded-xl bg-slate-900 hover:bg-black text-white font-bold transition-all shadow-lg shadow-slate-900/20 mb-4 flex items-center justify-center gap-2"
+                    disabled={isProcessing}
+                    className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg mb-4 flex items-center justify-center gap-2 ${
+                      isProcessing
+                        ? "bg-slate-400 text-slate-200 cursor-not-allowed shadow-slate-400/20"
+                        : "bg-slate-900 hover:bg-black text-white shadow-slate-900/20"
+                    }`}
                   >
-                    <FaLock />
-                    Secure Your Spot
+                    {isProcessing ? (
+                      <>
+                        <span className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-white animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <FaLock />
+                        Unlock Premium
+                      </>
+                    )}
                   </button>
                   <p className="text-center text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Limited to 50 students per batch

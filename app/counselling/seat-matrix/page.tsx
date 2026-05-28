@@ -85,7 +85,6 @@ const getConsistentSeats = (choiceCode: string, courseName: string) => {
 };
 
 export default function SeatMatrixCutoffPage() {
-	const [mounted, setMounted] = useState(false);
 	const [colleges, setColleges] = useState<College[]>([]);
 	const [loading, setLoading] = useState(true);
 
@@ -104,7 +103,6 @@ export default function SeatMatrixCutoffPage() {
 	const [selectedForCompare, setSelectedForCompare] = useState<College[]>([]);
 
 	useEffect(() => {
-		setMounted(true);
 		const clgRef = ref(database, "clgdb");
 		const unsubscribe = onValue(clgRef, (snapshot) => {
 			const data = snapshot.val();
@@ -187,8 +185,6 @@ export default function SeatMatrixCutoffPage() {
 		const gopen = college.Cutoffs.find((c) => c.Category === "GOPEN");
 		return gopen ? { Score: gopen.Score, Rank: gopen.Rank } : { Score: "N/A", Rank: "N/A" };
 	};
-
-	if (!mounted) return null;
 
 	return (
 		<main className="min-h-screen bg-white text-slate-900 print:bg-white print:text-black font-sans">

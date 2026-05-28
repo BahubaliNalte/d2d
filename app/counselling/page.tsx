@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { FaUniversity, FaBrain, FaBell, FaCrown, FaGift, FaMapMarkedAlt, FaArrowLeft, FaArrowRight, FaFileAlt, FaTh } from "react-icons/fa";
-import { useEffect, useState } from "react";
 
 const counsellingServices = [
 	{
@@ -107,12 +106,6 @@ const counsellingServices = [
 ];
 
 export default function CounsellingHomePage() {
-	const [mounted, setMounted] = useState(false);
-	useEffect(() => {
-		setMounted(true);
-	}, []);
-	if (!mounted) return null;
-
 	return (
 		<main className="min-h-screen bg-white" style={{ fontFamily: "'Inter', 'Poppins', sans-serif" }}>
 			{/* Back Navigation */}
