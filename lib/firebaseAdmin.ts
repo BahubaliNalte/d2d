@@ -17,7 +17,7 @@ if (!admin.apps.length) {
     credential = {
       projectId,
       clientEmail,
-      privateKey: privateKey.replace(/\\n/g, "\n"),
+      privateKey: privateKey.replace(/\\n/g, "\n").replace(/^"/, "").replace(/"$/, ""),
     };
   } else {
     // 2. Fallback: try to read serviceAccountKey.json dynamically using fs
