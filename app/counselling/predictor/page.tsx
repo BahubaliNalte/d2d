@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { database, auth } from "@/lib/firebase";
 import { ref, onValue, get, set } from "firebase/database";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 interface Cutoff {
   Category: string;
@@ -26,6 +28,8 @@ interface College {
 const unique = (array: string[]) => Array.from(new Set(array));
 
 export default function PredictorPage() {
+  const router = useRouter();
+  const { user, loading: authLoading, isPremium } = useRequireAuth({ requirePremium: false });
   const FEATURE_KEY = "predictor";
   const [colleges, setColleges] = useState<College[]>([]);
   const [score, setScore] = useState<number | null>(null);
@@ -38,46 +42,24 @@ export default function PredictorPage() {
   const [loading, setLoading] = useState(true);
   const [mainCategory, setMainCategory] = useState("");
   const [category, setCategory] = useState("");
-  const [isPlusMember, setIsPlusMember] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
+  const [usageLoading, setUsageLoading] = useState(true);
   const [showPremiumPopup, setShowPremiumPopup] = useState(false);
 
+  const isPlusMember = isPremium;
+  const isLoggedIn = !!user;
+
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-    const authUnsub = auth.onAuthStateChanged((user) => {
-      if (!user) {
-        setIsLoggedIn(false);
-        setIsPlusMember(false);
-        setUsageCount(0);
-        return;
-      }
-      setIsLoggedIn(true);
+    if (!user) return;
 
-      // Check PlusMember status
-      const plusRef = ref(database, `PlusMembers`);
-      unsubscribe = onValue(plusRef, (snapshot) => {
-        let found = false;
-        snapshot.forEach((child) => {
-          if (child.val()?.uid === user.uid) found = true;
-        });
-        setIsPlusMember(found);
-      });
-
-      // Fetch predictor usage
-      get(ref(database, `Users/${user.uid}/predictorUsage`)).then((snap) => {
-        if (snap.exists()) {
-          setUsageCount(snap.val());
-        } else {
-          setUsageCount(0);
-        }
-      });
+    // Fetch predictor usage
+    setUsageLoading(true);
+    get(ref(database, `Users/${user.uid}/predictorUsage`)).then((snap) => {
+      const count = snap.exists() ? snap.val() : 0;
+      setUsageCount(count);
+      setUsageLoading(false);
     });
-    return () => {
-      authUnsub();
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const clgRef = ref(database, "clgdb");
@@ -386,6 +368,15 @@ export default function PredictorPage() {
     }
   }, [isPlusMember, isLoggedIn, usageCount]);
 
+  // Show loading spinner while auth or usage count resolves (prevents flash of content)
+  if (authLoading || (user && usageLoading)) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-white px-6 md:px-20 py-16 font-poppins">
       <motion.h1
@@ -397,32 +388,7 @@ export default function PredictorPage() {
         Rank Wise Prediction using Our AI Model
       </motion.h1>
 
-      <AnimatePresence>
-        {showPremiumPopup && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center"
-          >
-            <div className="absolute inset-0 bg-black/40" onClick={() => setShowPremiumPopup(false)} />
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 10, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              className="relative z-10 bg-white rounded-2xl p-6 max-w-md w-full shadow-xl"
-            >
-              <h3 className="text-lg font-bold">Free limit reached</h3>
-              <p className="mt-2 text-sm text-slate-700">You've reached the free predictions limit for this feature. Upgrade to Premium for unlimited access and priority features.</p>
-              <div className="mt-4 flex justify-end gap-2">
-                <button onClick={() => setShowPremiumPopup(false)} className="px-4 py-2 rounded bg-slate-200">Close</button>
-                <Link href="/counselling/premium" className="px-4 py-2 rounded bg-slate-900 text-white">Upgrade to Premium</Link>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       {/* Free Usage Counter - Only show for non-premium users */}
       {isLoggedIn && !isPlusMember && (

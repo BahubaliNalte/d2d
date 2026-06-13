@@ -34,9 +34,13 @@ export default function RootLayout({
     // Only run on client
     if (typeof window === 'undefined') return;
     if (loading) return;
-    // Allow unauthenticated access to landing, login, signup, counselling, and premium
-    const publicPaths = ['/', '/login', '/signup', '/counselling', '/counselling/premium'];
-    if (!user && !publicPaths.includes(pathname)) {
+    // Allow unauthenticated access to landing, login, signup, and all counselling pages
+    // (each counselling page handles its own auth/premium guard via useRequireAuth)
+    const isPublic = pathname === '/' ||
+      pathname === '/login' ||
+      pathname === '/signup' ||
+      pathname.startsWith('/counselling');
+    if (!user && !isPublic) {
       router.push('/login');
     }
   }, [user, loading, pathname, router]);

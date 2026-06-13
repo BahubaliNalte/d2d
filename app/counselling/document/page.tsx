@@ -16,6 +16,7 @@ import {
 	FaClipboardCheck,
 } from "react-icons/fa";
 import { useEffect, useState, useMemo } from "react";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 // Types
 interface DocumentItem {
@@ -152,9 +153,11 @@ const DOCUMENT_DATABASE: DocumentItem[] = [
 ];
 
 export default function DocumentRequiredPage() {
+	const { loading: authLoading } = useRequireAuth({ requirePremium: false });
 	
 	// User Selections
 	const [caste, setCaste] = useState<string>("Open");
+
 	const [isCapStudent, setIsCapStudent] = useState<boolean>(true);
 	const [hasGap, setHasGap] = useState<boolean>(false);
 	const [isMinority, setIsMinority] = useState<boolean>(false);
@@ -230,6 +233,15 @@ export default function DocumentRequiredPage() {
 			return true;
 		});
 	}, [caste, isCapStudent, hasGap, isMinority, isPwd, isOtherBoard, searchQuery]);
+
+	// Show loading spinner while auth resolves (prevents flash of content)
+	if (authLoading) {
+		return (
+			<main className="min-h-screen flex items-center justify-center bg-white">
+				<div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
+			</main>
+		);
+	}
 
 	// Print Action
 	const handlePrint = () => {

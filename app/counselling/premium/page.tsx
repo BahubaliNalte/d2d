@@ -181,23 +181,34 @@ export default function PremiumPage() {
   const startRazorpay = useCallback(async (phone: string) => {
     const user = auth.currentUser;
     if (!user) return;
-    if (premiumPrice === null) {
-      toast.error("Unable to fetch premium price. Please try again later.");
+
+    // ── Get Firebase ID token for authenticated API calls ──────────────────
+    let idToken: string;
+    try {
+      idToken = await user.getIdToken();
+    } catch {
+      toast.error("Authentication error. Please log in again.");
       isProcessingRef.current = false;
       setIsProcessing(false);
       return;
     }
 
-    let orderId = null;
+    // ── Create order (price fetched SERVER-SIDE, not from client state) ────
+    let orderId: string | null = null;
+    let serverPrice: number | null = null;
     try {
       const orderRes = await fetch("/api/create-razorpay-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: premiumPrice * 100, currency: "INR" }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({}),
       });
       const orderData = await orderRes.json();
       if (!orderData.success) throw new Error("Order creation failed");
       orderId = orderData.order.id;
+      serverPrice = orderData.amount; // use the server-returned price
     } catch (error) {
       console.error("Order creation error:", error);
       toast.error("Failed to create payment order. Please try again later.");
@@ -206,11 +217,25 @@ export default function PremiumPage() {
       return;
     }
 
+    if (!serverPrice) {
+      toast.error("Unable to verify premium price. Please try again.");
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      return;
+    }
+
     const handlePaymentResponse = async (response: any) => {
       try {
+        // Re-fetch token (may have expired during payment flow)
+        let verifyToken = idToken;
+        try { verifyToken = await user.getIdToken(); } catch {}
+
         const verifyRes = await fetch("/api/verify-razorpay", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${verifyToken}`,
+          },
           body: JSON.stringify({
             razorpay_payment_id: response.razorpay_payment_id,
             razorpay_order_id: response.razorpay_order_id,
@@ -226,7 +251,7 @@ export default function PremiumPage() {
             email: user.email,
             phone,
             purchasedAt: new Date().toISOString(),
-            price: premiumPrice,
+            price: serverPrice,
             timestamp: Date.now(),
           });
           toast.success("Payment successful! Redirecting...");
@@ -245,7 +270,7 @@ export default function PremiumPage() {
 
     const options = {
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY || "",
-      amount: premiumPrice * 100,
+      amount: serverPrice * 100,
       currency: "INR",
       name: "Diploma2Degree Premium",
       description: "Premium Counselling Package",
@@ -264,7 +289,7 @@ export default function PremiumPage() {
 
     // @ts-ignore
     new window.Razorpay(options).open();
-  }, [premiumPrice, router]);
+  }, [router]);
 
   return (
     <main className="min-h-screen bg-white overflow-x-hidden">

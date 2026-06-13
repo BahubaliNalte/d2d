@@ -1,14 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { database, auth } from "@/lib/firebase";
+import { database } from "@/lib/firebase";
 import { ref, push, get, set } from "firebase/database";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { ref as dbRef, onValue } from "firebase/database";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRequireAuth } from "@/lib/useRequireAuth";
+import { FaCrown, FaLock } from "react-icons/fa";
 
 export default function BestCollegeListPage() {
+  const { user, loading: authLoading, authResolved, isPremium } =
+    useRequireAuth({ requirePremium: true });
+
   const [form, setForm] = useState({
     caste: "",
     percentage: "",
@@ -17,65 +21,14 @@ export default function BestCollegeListPage() {
     details: ""
   });
   const [submitted, setSubmitted] = useState(false);
-  const [user, setUser] = useState<any>(null);
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [formError, setFormError] = useState("");
-  const [isPlusMember, setIsPlusMember] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [usageCount, setUsageCount] = useState(0);
-  const [showPremiumPopup, setShowPremiumPopup] = useState(false);
 
-  // Check premium status and usage count
-  React.useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-    const authUnsub = auth.onAuthStateChanged((user) => {
-      if (!user) {
-        setIsLoggedIn(false);
-        setIsPlusMember(false);
-        setUsageCount(0);
-        return;
-      }
-      setIsLoggedIn(true);
-
-      // Check PlusMember status
-      const plusRef = ref(database, `PlusMembers`);
-      unsubscribe = onValue(plusRef, (snapshot) => {
-        let found = false;
-        snapshot.forEach((child) => {
-          if (child.val()?.uid === user.uid) found = true;
-        });
-        setIsPlusMember(found);
-      });
-
-      // Fetch list generator usage
-      get(ref(database, `Users/${user.uid}/listGeneratorUsage`)).then((snap) => {
-        if (snap.exists()) {
-          setUsageCount(snap.val());
-        } else {
-          setUsageCount(0);
-        }
-      });
-    });
-    return () => {
-      authUnsub();
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  // Get current user
-  React.useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Fetch user's requests
-  React.useEffect(() => {
-    if (!user) return;
+  // Fetch user's previous requests (only for premium users)
+  useEffect(() => {
+    if (!user || !isPremium) return;
     const reqRef = dbRef(database, "requestclglist");
     const unsubscribe = onValue(reqRef, (snapshot) => {
       const data = snapshot.val();
@@ -90,8 +43,55 @@ export default function BestCollegeListPage() {
       setLoadingRequests(false);
     });
     return () => unsubscribe();
-  }, [user, refreshKey]);
+  }, [user, isPremium, refreshKey]);
 
+  // ── Show spinner while auth is resolving ──────────────────────────────────
+  if (authLoading || !authResolved) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
+      </main>
+    );
+  }
+
+  // ── Premium gate: logged in but NOT premium ────────────────────────────────
+  if (authResolved && user && !isPremium) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="bg-white rounded-3xl p-10 shadow-lg w-full max-w-lg border border-slate-200 text-center">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6 border border-slate-200">
+            <FaLock className="text-2xl text-slate-900" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-slate-900 mb-3">
+            Premium Feature
+          </h1>
+          <p className="text-slate-500 text-sm leading-relaxed mb-8">
+            AI-powered Best College List is exclusively available for Premium
+            members. Our experts will curate a personalized list of the best
+            colleges for your profile.
+          </p>
+          <Link
+            href="/counselling/premium"
+            className="inline-flex items-center gap-2 w-full justify-center py-3.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-lg shadow-md transition duration-300"
+          >
+            <FaCrown className="text-amber-400" />
+            Upgrade to Premium
+          </Link>
+          <Link
+            href="/counselling"
+            className="block mt-4 text-sm text-slate-500 hover:text-slate-700 font-medium transition"
+          >
+            ← Back to Counselling
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  // ── Not logged in — redirect already fired ────────────────────────────────
+  if (!user) return null;
+
+  // ── Form handlers ─────────────────────────────────────────────────────────
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
@@ -108,9 +108,7 @@ export default function BestCollegeListPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
-    if (!user) return;
 
-    // Validation first
     if (!form.caste.trim()) {
       setFormError("Caste is required.");
       return;
@@ -133,26 +131,6 @@ export default function BestCollegeListPage() {
       return;
     }
 
-    // Check premium status and usage limit AFTER validation
-    if (!isLoggedIn) {
-      setFormError("Please login to use this feature.");
-      return;
-    }
-
-    if (!isPlusMember) {
-      if (usageCount >= 4) {
-        setShowPremiumPopup(true);
-        return;
-      }
-      // Increment usage count
-      const newCount = usageCount + 1;
-      if (user) {
-        set(ref(database, `Users/${user.uid}/listGeneratorUsage`), newCount);
-      }
-      setUsageCount(newCount);
-    }
-
-    // Now submit the form
     await push(ref(database, "requestclglist"), {
       ...form,
       email: user.email || "",
@@ -162,32 +140,17 @@ export default function BestCollegeListPage() {
     setSubmitted(true);
   };
 
+  // ── Premium user full page ────────────────────────────────────────────────
   return (
     <main className="min-h-screen flex items-center justify-center bg-white p-4 font-poppins">
       <div className="bg-white rounded-3xl p-10 shadow-lg w-full max-w-lg border border-slate-200">
-        <h1 className="text-3xl font-extrabold text-slate-900 mb-4 text-center">Best College List Request</h1>
+        <h1 className="text-3xl font-extrabold text-slate-900 mb-4 text-center">
+          Best College List Request
+        </h1>
         <p className="text-slate-600 mb-6 text-center leading-relaxed">
-          Request a personalized list of the best colleges for your profile. Our experts will review your details and send you a curated list.
+          Request a personalized list of the best colleges for your profile. Our
+          experts will review your details and send you a curated list.
         </p>
-
-        {/* Free Usage Counter - Only show for non-premium users */}
-        {isLoggedIn && !isPlusMember && (
-          <div className="mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-700">Free Requests Used</span>
-              <span className="text-sm font-bold text-slate-900">{usageCount} / 4</span>
-            </div>
-            <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
-              <div 
-                className="bg-slate-900 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${(usageCount / 4) * 100}%` }}
-              ></div>
-            </div>
-            {usageCount >= 4 && (
-              <p className="text-xs text-slate-600 mt-2">You've reached your free limit. <Link href="/counselling/premium" className="text-slate-900 font-bold hover:underline">Upgrade to Premium</Link> for unlimited requests.</p>
-            )}
-          </div>
-        )}
 
         {/* My Requests Section */}
         {user && (
@@ -215,11 +178,11 @@ export default function BestCollegeListPage() {
                         <div className="font-semibold text-slate-800">% Marks: <span className="font-normal text-slate-600">{req.percentage}</span></div>
                         <div className="font-semibold text-slate-800">Cities: <span className="font-normal text-slate-600">{Array.isArray(req.cities) ? req.cities.join(", ") : req.cities}</span></div>
                         <div className="font-semibold text-slate-800">Branches: <span className="font-normal text-slate-600">{Array.isArray(req.branches) ? req.branches.join(", ") : req.branches}</span></div>
-                        <div className="font-semibold text-slate-800">Status: <span className="font-normal capitalize text-slate-600" >{req.status || <span className='text-slate-400'>Not set by admin</span>}</span></div>
+                        <div className="font-semibold text-slate-800">Status: <span className="font-normal capitalize text-slate-600">{req.status || <span className="text-slate-400">Not set by admin</span>}</span></div>
                       </div>
                       <div>
                         {req.adminClgListUrl ? (
-                          req.adminClgListUrl.endsWith('.pdf') ? (
+                          req.adminClgListUrl.endsWith(".pdf") ? (
                             <a href={req.adminClgListUrl} target="_blank" rel="noopener noreferrer" className="text-slate-900 hover:text-black underline font-semibold text-sm">View PDF List</a>
                           ) : (
                             <a href={req.adminClgListUrl} target="_blank" rel="noopener noreferrer" className="group">
@@ -238,9 +201,12 @@ export default function BestCollegeListPage() {
             )}
           </div>
         )}
-        {/* Only show form if user has not submitted a request */}
+
+        {/* Form — show only if no prior request */}
         {submitted ? (
-          <div className="text-emerald-600 text-center font-semibold mb-4 bg-emerald-50 py-3 rounded-2xl border border-emerald-100">Your request has been submitted! Our team will contact you soon.</div>
+          <div className="text-emerald-600 text-center font-semibold mb-4 bg-emerald-50 py-3 rounded-2xl border border-emerald-100">
+            Your request has been submitted! Our team will contact you soon.
+          </div>
         ) : myRequests.length === 0 ? (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {formError && (
@@ -301,40 +267,6 @@ export default function BestCollegeListPage() {
             </button>
           </form>
         ) : null}
-
-        {/* ── Premium Popup ── */}
-        <AnimatePresence>
-          {showPremiumPopup && (
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 px-4"
-            >
-              <motion.div
-                initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
-                className="bg-white p-8 md:p-10 rounded-3xl shadow-2xl w-full max-w-lg border border-slate-200 text-center relative overflow-hidden"
-              >
-                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-slate-700 to-slate-900"></div>
-                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6 text-slate-900 shadow-sm border border-slate-200 text-3xl">
-                  👑
-                </div>
-                <h3 className="text-3xl font-black mb-3 text-slate-900 tracking-tight">Free Limit Reached</h3>
-                <p className="mb-8 text-base text-slate-500 leading-relaxed font-medium px-4">
-                  You have used your 4 free college list requests. Upgrade to Premium to get unlimited access, full CAP round support, and 1:1 expert mentorship.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Link href="/counselling/premium"
-                    className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900 hover:bg-black text-white font-bold transition-all shadow-lg text-sm flex items-center justify-center gap-2">
-                    Upgrade to Premium
-                  </Link>
-                  <button onClick={() => setShowPremiumPopup(false)}
-                    className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 font-bold transition-colors text-sm">
-                    Cancel
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
     </main>
   );

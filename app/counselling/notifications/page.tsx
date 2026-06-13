@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { database } from "@/lib/firebase";
 import { ref, onValue } from "firebase/database";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 export default function CounsellingNotifications() {
+  const { loading: authLoading } = useRequireAuth({ requirePremium: false });
   const [announcements, setAnnouncements] = useState<{ message: string; createdAt: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,6 +27,15 @@ export default function CounsellingNotifications() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Show loading spinner while auth resolves (prevents flash of content)
+  if (authLoading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-white flex items-center justify-center py-10 px-4 font-poppins">

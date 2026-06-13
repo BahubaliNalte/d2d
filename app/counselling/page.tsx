@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { FaUniversity, FaBrain, FaBell, FaCrown, FaGift, FaMapMarkedAlt, FaArrowLeft, FaArrowRight, FaFileAlt, FaTh } from "react-icons/fa";
+import { FaUniversity, FaBrain, FaBell, FaCrown, FaGift, FaMapMarkedAlt, FaArrowLeft, FaArrowRight, FaFileAlt, FaTh, FaGraduationCap } from "react-icons/fa";
 
 const counsellingServices = [
 	{
@@ -82,6 +82,20 @@ const counsellingServices = [
 		description: (
 			<>
 				Explore available <b>scholarships</b> for diploma and engineering students.
+			</>
+		),
+		bgColor: "bg-slate-50 border border-slate-100",
+		iconColor: "text-slate-900",
+		borderColor: "border-slate-200",
+		hoverBorder: "hover:border-slate-800",
+	},
+	{
+		title: "Best College List",
+		href: "/counselling/best-college-list",
+		icon: <FaGraduationCap />,
+		description: (
+			<>
+				Request a <b>personalized list</b> of the best colleges curated by our experts for your profile.
 			</>
 		),
 		bgColor: "bg-slate-50 border border-slate-100",

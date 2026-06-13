@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { database, auth } from "@/lib/firebase";
 import { ref, onValue, get, set } from "firebase/database";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 interface Cutoff {
   Category: string;
@@ -26,6 +28,9 @@ interface College {
 const unique = (array: string[]) => Array.from(new Set(array));
 
 export default function CollegeListPage() {
+  const router = useRouter();
+  const { user, loading: authLoading, isPremium } = useRequireAuth({ requirePremium: false });
+
   const [colleges, setColleges] = useState<College[]>([]);
   const [location, setLocation] = useState("");
   // Branch filtering states
@@ -38,10 +43,12 @@ export default function CollegeListPage() {
   const [diplomaPercent, setDiplomaPercent] = useState<number | null>(null);
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isPlusMember, setIsPlusMember] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
+  const [usageLoading, setUsageLoading] = useState(true);
   const [showPremiumPopup, setShowPremiumPopup] = useState(false);
+
+  const isPlusMember = isPremium;
+  const isLoggedIn = !!user;
 
   useEffect(() => {
     const clgRef = ref(database, "clgdb");
@@ -59,42 +66,17 @@ export default function CollegeListPage() {
     return () => unsubscribe();
   }, []);
 
-  // Check premium status and usage count
+  // Fetch and verify usage limits
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-    const authUnsub = auth.onAuthStateChanged((user) => {
-      if (!user) {
-        setIsLoggedIn(false);
-        setIsPlusMember(false);
-        setUsageCount(0);
-        return;
-      }
-      setIsLoggedIn(true);
+    if (!user) return;
 
-      // Check PlusMember status
-      const plusRef = ref(database, `PlusMembers`);
-      unsubscribe = onValue(plusRef, (snapshot) => {
-        let found = false;
-        snapshot.forEach((child) => {
-          if (child.val()?.uid === user.uid) found = true;
-        });
-        setIsPlusMember(found);
-      });
-
-      // Fetch college explorer usage
-      get(ref(database, `Users/${user.uid}/collegeExplorerUsage`)).then((snap) => {
-        if (snap.exists()) {
-          setUsageCount(snap.val());
-        } else {
-          setUsageCount(0);
-        }
-      });
+    setUsageLoading(true);
+    get(ref(database, `Users/${user.uid}/collegeExplorerUsage`)).then((snap) => {
+      const count = snap.exists() ? snap.val() : 0;
+      setUsageCount(count);
+      setUsageLoading(false);
     });
-    return () => {
-      authUnsub();
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
+  }, [user]);
 
   // Sort locations and streams alphabetically
   const locations = unique(colleges.map((c) => c.City))
@@ -522,6 +504,15 @@ const cityDistrictMap: { [key: string]: string[] } = {
       if (formSubmitted) setFormSubmitted(false);
     }
   }, [diplomaPercent, mainBranch, mainCategory, location]);
+
+  // Show loading spinner while auth resolves or usage count is being fetched (prevents flash of content)
+  if (authLoading || (user && usageLoading)) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-white px-6 md:px-20 py-16 font-poppins">

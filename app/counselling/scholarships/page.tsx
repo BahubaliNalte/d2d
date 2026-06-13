@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { database } from "@/lib/firebase";
 import { ref, onValue } from "firebase/database";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 // Scholarship type
 type Scholarship = {
@@ -28,6 +29,7 @@ const casteOptions = [
 ];
 
 export default function ScholarshipsPage() {
+  const { loading: authLoading } = useRequireAuth({ requirePremium: false });
   const [caste, setCaste] = useState("");
   const [scholarships, setScholarships] = useState<Scholarship[]>([]);
   const [selectedScholarship, setSelectedScholarship] = useState<Scholarship | null>(null);
@@ -57,6 +59,15 @@ export default function ScholarshipsPage() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Show loading spinner while auth resolves (prevents flash of content)
+  if (authLoading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
+      </main>
+    );
+  }
 
   // Only filter by caste (case-insensitive, fallback to all)
   const filtered = scholarships.filter((s) => {
@@ -117,9 +128,9 @@ export default function ScholarshipsPage() {
           filtered.map((s, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1, duration: 0.6 }}
+              transition={{ delay: Math.min(i * 0.05, 0.3), duration: 0.4 }}
               viewport={{ once: true }}
               className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-md border border-slate-200 border-l-4 border-l-slate-900 relative flex flex-col justify-between"
             >

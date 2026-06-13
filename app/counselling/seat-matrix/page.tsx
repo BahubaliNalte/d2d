@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { database } from "@/lib/firebase";
 import { ref, onValue } from "firebase/database";
 import { useEffect, useState, useMemo } from "react";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 import {
 	FaArrowLeft,
 	FaSearch,
@@ -85,6 +86,7 @@ const getConsistentSeats = (choiceCode: string, courseName: string) => {
 };
 
 export default function SeatMatrixCutoffPage() {
+	const { loading: authLoading } = useRequireAuth({ requirePremium: false });
 	const [colleges, setColleges] = useState<College[]>([]);
 	const [loading, setLoading] = useState(true);
 
@@ -152,6 +154,15 @@ export default function SeatMatrixCutoffPage() {
 			return matchesSearch && matchesCity && matchesCourse && matchesStatus;
 		});
 	}, [colleges, searchQuery, cityFilter, courseFilter, statusFilter]);
+
+	// Show loading spinner while auth resolves (prevents flash of content)
+	if (authLoading) {
+		return (
+			<main className="min-h-screen flex items-center justify-center bg-white">
+				<div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
+			</main>
+		);
+	}
 
 	// Toggle College Expansion
 	const toggleExpand = (choiceCode: string) => {
