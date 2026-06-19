@@ -66,11 +66,32 @@ export default function ProfilePage() {
   }, [router]);
 
   const handleAddPhone = async () => {
-    if (!userUid || !newPhone) return;
+    if (!userUid) {
+      console.error("handleAddPhone: missing userUid");
+      return;
+    }
+    const phoneVal = (newPhone || "").trim();
+    if (!phoneVal) {
+      alert("Please enter a phone number.");
+      return;
+    }
+    // Basic validation: 10 digits (India)
+    if (!/^\d{10}$/.test(phoneVal)) {
+      alert("Please enter a valid 10-digit phone number.");
+      return;
+    }
+
     const userRef = ref(database, `Users/${userUid}`);
-    await update(userRef, { phone: newPhone });
-    setUserData((prev) => prev ? { ...prev, phone: newPhone } : prev);
-    setShowAddPhone(false);
+    try {
+      console.log("handleAddPhone: saving phone", phoneVal, "for uid", userUid);
+      await update(userRef, { phone: phoneVal });
+      console.log("handleAddPhone: saved successfully");
+      setUserData((prev) => (prev ? { ...prev, phone: phoneVal } : prev));
+      setShowAddPhone(false);
+    } catch (err) {
+      console.error("handleAddPhone: failed to save phone", err);
+      alert("Failed to save phone. Check console for details.");
+    }
   };
 
   if (loading) {
