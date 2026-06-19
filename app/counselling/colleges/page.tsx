@@ -46,6 +46,7 @@ export default function CollegeListPage() {
   const [usageCount, setUsageCount] = useState(0);
   const [usageLoading, setUsageLoading] = useState(true);
   const [showPremiumPopup, setShowPremiumPopup] = useState(false);
+  const [showAddNumberPopup, setShowAddNumberPopup] = useState(false);
 
   const isPlusMember = isPremium;
   const isLoggedIn = !!user;
@@ -534,15 +535,15 @@ const cityDistrictMap: { [key: string]: string[] } = {
         >
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-slate-700">Free Searches Used</span>
-            <span className="text-sm font-bold text-slate-900">{usageCount} / 4</span>
+            <span className="text-sm font-bold text-slate-900">{usageCount} / 5</span>
           </div>
           <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
             <div 
               className="bg-slate-900 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(usageCount / 4) * 100}%` }}
+              style={{ width: `${(usageCount / 5) * 100}%` }}
             ></div>
           </div>
-          {usageCount >= 4 && (
+          {usageCount >= 5 && (
             <p className="text-xs text-slate-600 mt-2">You've reached your free limit. <Link href="/counselling/premium" className="text-slate-900 font-bold hover:underline">Upgrade to Premium</Link> for unlimited searches.</p>
           )}
         </motion.div>
@@ -551,7 +552,7 @@ const cityDistrictMap: { [key: string]: string[] } = {
       {/* Filter Form */}
       <form
         className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200"
-        onSubmit={e => {
+        onSubmit={async e => {
           e.preventDefault();
 
           // Check premium status and usage limit
@@ -560,21 +561,44 @@ const cityDistrictMap: { [key: string]: string[] } = {
             return;
           }
 
+          // Require phone number for using this feature
+          const currUser = auth.currentUser;
+          if (currUser) {
+            let hasPhone = !!currUser.phoneNumber;
+            try {
+              if (!hasPhone) {
+                const snap = await get(ref(database, `Users/${currUser.uid}/phone`));
+                if (snap.exists() && snap.val()) hasPhone = true;
+              }
+            } catch (e) {
+              // ignore
+            }
+            if (!hasPhone) {
+              setShowAddNumberPopup(true);
+              return;
+            }
+          }
+
+          // Show results panel first
+          setFormSubmitted(true);
+
+          // Only increment usage for non-premium users when results are found
           if (!isPlusMember) {
-            if (usageCount >= 4) {
+            if (usageCount >= 5) {
               setShowPremiumPopup(true);
               return;
             }
-            // Increment usage count
-            const newCount = usageCount + 1;
-            const user = auth.currentUser;
-            if (user) {
-              set(ref(database, `Users/${user.uid}/collegeExplorerUsage`), newCount);
+            // `filtered` contains the matching results for current form state
+            if (filtered.length > 0) {
+              const newCount = Math.min(usageCount + 1, 5);
+              const user = auth.currentUser;
+              if (user) {
+                set(ref(database, `Users/${user.uid}/collegeExplorerUsage`), newCount);
+              }
+              setUsageCount(newCount);
+              if (newCount >= 5) setShowPremiumPopup(true);
             }
-            setUsageCount(newCount);
           }
-
-          setFormSubmitted(true);
         }}
       >
         <input
@@ -804,7 +828,7 @@ const cityDistrictMap: { [key: string]: string[] } = {
               </div>
               <h3 className="text-3xl font-black mb-3 text-slate-900 tracking-tight">Free Limit Reached</h3>
               <p className="mb-8 text-base text-slate-500 leading-relaxed font-medium px-4">
-                You have used your 4 free college searches. Upgrade to Premium to get unlimited access, full CAP round support, and 1:1 expert mentorship.
+                You have used your 5 free college searches. Upgrade to Premium to get unlimited access, full CAP round support, and 1:1 expert mentorship.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link href="/counselling/premium"
@@ -815,6 +839,24 @@ const cityDistrictMap: { [key: string]: string[] } = {
                   className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 font-bold transition-colors text-sm">
                   Cancel
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        {showAddNumberPopup && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 px-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
+              className="bg-white p-8 md:p-10 rounded-3xl shadow-2xl w-full max-w-lg border border-slate-200 text-center relative overflow-hidden"
+            >
+              <h3 className="text-2xl font-bold mb-3 text-slate-900">Mobile Number Required</h3>
+              <p className="mb-6 text-sm text-slate-600">Please add your mobile number in your profile to use this feature.</p>
+              <div className="flex gap-4 justify-center">
+                <Link href="/profile" className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold">Add Number</Link>
+                <button onClick={() => setShowAddNumberPopup(false)} className="px-6 py-3 rounded-xl border">Cancel</button>
               </div>
             </motion.div>
           </motion.div>
