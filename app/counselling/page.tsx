@@ -1,8 +1,9 @@
 "use client";
 
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { FaUniversity, FaBrain, FaBell, FaCrown, FaGift, FaMapMarkedAlt, FaArrowLeft, FaArrowRight, FaFileAlt, FaTh, FaGraduationCap } from "react-icons/fa";
+import { motion, AnimatePresence } from "framer-motion";
+import { FaUniversity, FaBrain, FaBell, FaCrown, FaGift, FaMapMarkedAlt, FaArrowLeft, FaArrowRight, FaFileAlt, FaTh, FaGraduationCap, FaWhatsapp, FaTimes } from "react-icons/fa";
 
 const counsellingServices = [
 	{
@@ -120,8 +121,31 @@ const counsellingServices = [
 ];
 
 export default function CounsellingHomePage() {
+	const [showModal, setShowModal] = useState(false);
+
+	useEffect(() => {
+		// Wait 1.5 seconds before showing the modal
+		const hasJoined = localStorage.getItem("d2d_whatsapp_joined");
+		if (hasJoined !== "true") {
+			const timer = setTimeout(() => {
+				setShowModal(true);
+			}, 1500);
+			return () => clearTimeout(timer);
+		}
+	}, []);
+
+	const handleJoinGroup = () => {
+		localStorage.setItem("d2d_whatsapp_joined", "true");
+		window.open("https://chat.whatsapp.com/LTcuLVPipunFPjodf2ifkl", "_blank");
+		setShowModal(false);
+	};
+
+	const handleDismiss = () => {
+		setShowModal(false);
+	};
+
 	return (
-		<main className="min-h-screen bg-white" style={{ fontFamily: "'Inter', 'Poppins', sans-serif" }}>
+		<main className="min-h-screen bg-white relative" style={{ fontFamily: "'Inter', 'Poppins', sans-serif" }}>
 			{/* Back Navigation */}
 			<div className="p-4 sm:p-6">
 				<Link
@@ -139,12 +163,12 @@ export default function CounsellingHomePage() {
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.6 }}
-					className="text-center mb-14"
+					className="text-center mb-8 sm:mb-14"
 				>
 					<span className="inline-flex items-center gap-2 px-4 py-1.5 bg-slate-50 rounded-full border border-slate-200 mb-6 text-xs sm:text-sm font-medium text-slate-800">
 						🎓 Expert Guidance
 					</span>
-					<h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight">
+					<h1 className="text-2xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight">
 						Counselling Services
 					</h1>
 					<p className="text-base sm:text-lg text-slate-500 mt-4 max-w-xl mx-auto">
@@ -164,22 +188,92 @@ export default function CounsellingHomePage() {
 						>
 							<Link
 								href={service.href}
-								className={`block p-6 rounded-2xl border-2 ${service.borderColor} ${service.hoverBorder} bg-white hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group`}
+								className={`flex sm:block items-center sm:items-start gap-4 p-4 sm:p-6 rounded-2xl border-2 ${service.borderColor} ${service.hoverBorder} bg-white hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group`}
 								id={`counselling-${service.title.toLowerCase().replace(/\s+/g, '-')}`}
 							>
-								<div className={`w-12 h-12 rounded-xl ${service.bgColor} flex items-center justify-center mb-4 ${service.iconColor} text-xl transition-transform duration-300 group-hover:scale-110`}>
+								<div className={`shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl ${service.bgColor} flex items-center justify-center sm:mb-4 ${service.iconColor} text-lg sm:text-xl transition-transform duration-300 group-hover:scale-110`}>
 									{service.icon}
 								</div>
-								<h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center justify-between">
-									{service.title}
-									<FaArrowRight className="text-sm text-slate-300 group-hover:text-black transition-all duration-300 group-hover:translate-x-1" />
-								</h3>
-								<p className="text-sm text-slate-500 leading-relaxed">{service.description}</p>
+								<div className="flex-1 min-w-0">
+									<h3 className="text-sm sm:text-lg font-bold text-slate-800 mb-1 sm:mb-2 flex items-center justify-between">
+										{service.title}
+										<FaArrowRight className="text-xs sm:text-sm text-slate-300 group-hover:text-black transition-all duration-300 group-hover:translate-x-1 shrink-0 ml-2" />
+									</h3>
+									<p className="text-xs sm:text-sm text-slate-500 leading-relaxed">{service.description}</p>
+								</div>
 							</Link>
 						</motion.div>
 					))}
 				</div>
 			</div>
+
+			{/* WhatsApp Auto-Join Pop-up Modal */}
+			<AnimatePresence>
+				{showModal && (
+					<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+						{/* Backdrop */}
+						<motion.div
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							onClick={handleDismiss}
+							className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+						/>
+
+						{/* Modal Box */}
+						<motion.div
+							initial={{ opacity: 0, scale: 0.95, y: 20 }}
+							animate={{ opacity: 1, scale: 1, y: 0 }}
+							exit={{ opacity: 0, scale: 0.95, y: 20 }}
+							transition={{ type: "spring", duration: 0.5 }}
+							className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 p-6 sm:p-8 text-center z-10"
+						>
+							{/* Close Button */}
+							<button
+								onClick={handleDismiss}
+								className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition p-2 rounded-full hover:bg-slate-50"
+							>
+								<FaTimes className="text-base" />
+							</button>
+
+							{/* Icon */}
+							<div className="mx-auto w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-500 mb-6 shadow-inner">
+								<FaWhatsapp className="text-4xl" />
+							</div>
+
+							{/* Header */}
+							<h3 className="text-xl sm:text-2xl font-extrabold text-slate-950 leading-snug mb-3">
+								Join Maharashtra's #1 DSE Counselling Group!
+							</h3>
+
+							{/* Body Text */}
+							<p className="text-sm text-slate-500 leading-relaxed mb-6">
+								Get real-time admission updates, cutoff alerts, document lists, and connect with other direct second year (DSE) diploma students!
+							</p>
+
+							{/* Actions */}
+							<div className="flex flex-col gap-3">
+								<button
+									onClick={handleJoinGroup}
+									className="w-full flex items-center justify-center gap-2.5 px-6 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-2xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all active:scale-98"
+								>
+									<FaWhatsapp className="text-lg" />
+									<span>Join WhatsApp Group</span>
+								</button>
+								<button
+									onClick={() => {
+										localStorage.setItem("d2d_whatsapp_joined", "true");
+										setShowModal(false);
+									}}
+									className="text-xs text-slate-400 hover:text-slate-600 font-medium py-2 transition hover:underline"
+								>
+									Don't show this again
+								</button>
+							</div>
+						</motion.div>
+					</div>
+				)}
+			</AnimatePresence>
 		</main>
 	);
 }

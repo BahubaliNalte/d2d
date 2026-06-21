@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { database } from "@/lib/firebase";
-import { ref, onValue, remove, update } from "firebase/database";
+import { ref, onValue, remove } from "firebase/database";
 
 export type ProjectRequest = {
   id: string;
@@ -42,10 +42,6 @@ export default function ProjectRequestTable() {
     });
     return () => unsubscribe();
   }, []);
-
-  const handleStatus = async (id: string, status: string) => {
-    await update(ref(database, `project-request/${id}`), { status });
-  };
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Delete this project request?")) {

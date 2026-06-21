@@ -1,12 +1,92 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { database, auth } from "@/lib/firebase";
-import { ref, onValue, get, set } from "firebase/database";
+import { ref, get, set } from "firebase/database";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { getCollegesFromDb } from "@/lib/collegesCache";
+import CollegePrintReport from "@/components/CollegePrintReport";
+
+// Searchable dropdown component
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+  required,
+}: {
+  options: string[];
+  value: string;
+  onChange: (val: string) => void;
+  placeholder: string;
+  required?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref2 = useRef<HTMLDivElement>(null);
+
+  const filtered = query
+    ? options.filter((o) => o.toLowerCase().includes(query.toLowerCase()))
+    : options;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref2.current && !ref2.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref2} className="relative w-full">
+      <div
+        className={`flex items-center border rounded-xl bg-white px-3 py-2.5 cursor-text ${open ? "border-slate-500 ring-2 ring-slate-100" : "border-slate-200"
+          } transition`}
+        onClick={() => setOpen(true)}
+      >
+        <input
+          className="flex-1 outline-none text-sm text-slate-800 bg-transparent placeholder:text-slate-400 min-w-0"
+          placeholder={value || placeholder}
+          value={open ? query : ""}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          required={required && !value}
+        />
+        {value && !open && (
+          <span className="text-sm text-slate-700 truncate flex-1">{value}</span>
+        )}
+        <svg className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {value && (
+            <button
+              type="button"
+              onClick={() => { onChange(""); setQuery(""); setOpen(false); }}
+              className="w-full text-left px-4 py-2.5 text-xs text-slate-400 hover:bg-slate-50 border-b border-slate-100"
+            >Clear selection</button>
+          )}
+          {filtered.length === 0 ? (
+            <p className="px-4 py-3 text-xs text-slate-400">No results found</p>
+          ) : (
+            filtered.map((opt, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => { onChange(opt); setQuery(""); setOpen(false); }}
+                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition ${opt === value ? "font-semibold text-slate-900 bg-slate-50" : "text-slate-700"
+                  }`}
+              >{opt}</button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Cutoff {
   Category: string;
@@ -45,26 +125,23 @@ export default function CollegeListPage() {
   const [loading, setLoading] = useState(true);
   const [usageCount, setUsageCount] = useState(0);
   const [usageLoading, setUsageLoading] = useState(true);
-  const [showPremiumPopup, setShowPremiumPopup] = useState(false);
   const [showAddNumberPopup, setShowAddNumberPopup] = useState(false);
+  const [showPrintReport, setShowPrintReport] = useState(false);
 
   const isPlusMember = isPremium;
   const isLoggedIn = !!user;
 
   useEffect(() => {
-    const clgRef = ref(database, "clgdb");
-    const unsubscribe = onValue(clgRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        // Flatten data if stored as object
-        const arr = Array.isArray(data) ? data : Object.values(data);
+    getCollegesFromDb()
+      .then((arr) => {
         setColleges(arr as College[]);
-      } else {
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to read clgdb:", err);
         setColleges([]);
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
+        setLoading(false);
+      });
   }, []);
 
   // Fetch and verify usage limits
@@ -72,11 +149,17 @@ export default function CollegeListPage() {
     if (!user) return;
 
     setUsageLoading(true);
-    get(ref(database, `Users/${user.uid}/collegeExplorerUsage`)).then((snap) => {
-      const count = snap.exists() ? snap.val() : 0;
-      setUsageCount(count);
-      setUsageLoading(false);
-    });
+    get(ref(database, `Usage/collegeExplorer/${user.uid}`))
+      .then((snap) => {
+        const count = snap.exists() ? snap.val() : 0;
+        setUsageCount(count);
+        setUsageLoading(false);
+      })
+      .catch((e) => {
+        console.error("Error fetching collegeExplorer usage:", e);
+        setUsageCount(0);
+        setUsageLoading(false);
+      });
   }, [user]);
 
   // Sort locations and streams alphabetically
@@ -246,7 +329,7 @@ export default function CollegeListPage() {
   ];
 
   // Branch mapping for display/normalization
-const branchMap: { [key: string]: string } = {
+  const branchMap: { [key: string]: string } = {
     "Artificial Intelligence and Data Science": "Artificial Intelligence and Data Science",
     "Artificial Intelligence (AI) and Data Science": "Artificial Intelligence and Data Science",
     "Computer Science and Engineering (Artificial Intelligence and Data Science)": "Artificial Intelligence and Data Science",
@@ -296,12 +379,12 @@ const branchMap: { [key: string]: string } = {
     // ... add more as needed ...
   };
 
-// Reverse mapping: full branch name -> all possible variants
-const reverseBranchMap: { [key: string]: string[] } = {};
-Object.entries(branchMap).forEach(([variant, full]) => {
-  if (!reverseBranchMap[full]) reverseBranchMap[full] = [];
-  reverseBranchMap[full].push(variant);
-});
+  // Reverse mapping: full branch name -> all possible variants
+  const reverseBranchMap: { [key: string]: string[] } = {};
+  Object.entries(branchMap).forEach(([variant, full]) => {
+    if (!reverseBranchMap[full]) reverseBranchMap[full] = [];
+    reverseBranchMap[full].push(variant);
+  });
   // Normalize branch names for filtering and display
   const normalizeBranch = (branch: string) => branchMap[branch] || branch;
   const dataBranches = unique(
@@ -348,54 +431,54 @@ Object.entries(branchMap).forEach(([variant, full]) => {
   };
   const mainCategories = Object.keys(mainCategoryMap);
 
-// City and district mapping for Maharashtra (expanded)
-const cityDistrictMap: { [key: string]: string[] } = {
-  mumbai: ["mumbai", "thane", "navi mumbai", "panvel", "kalyan", "dombivli", "vasai", "virar", "andheri", "boisar", "ulhasnagar", "badlapur"],
-  pune: ["pune", "pcmc", "hadapsar", "wagholi", "shivaji nagar", "kothrud", "baramati", "lonavala", "narhe", "pisoli", "ravet", "sasewadi", "warje", "bhor", "indapur"],
-  nagpur: ["nagpur", "wardha", "bhandara", "ramtek", "sevagram", "sindhi", "badravati", "bamni"],
-  nashik: ["nashik", "malegaon", "satana", "kopargaon", "sinnar", "niphad", "egatpuri", "phar"],
-  aurangabad: ["aurangabad", "jalna", "paithan", "sambhajinagar", "beed", "ambejogai", "dharashiv", "tuljapur"],
-  kolhapur: ["kolhapur", "ichalkaranji", "karvir", "gadhinglaj", "jaysingpur", "miraj", "sangli", "yadrav", "warananagar", "panhala"],
-  ahmednagar: ["ahmednagar", "nagar", "sangamner", "nepti"],
-  akola: ["akola"],
-  amravati: ["amravati", "badnera", "chandrapur"],
-  bhusawal: ["bhusawal"],
-  buldhana: ["buldhana", "chikhali", "shegaon"],
-  chandrapur: ["chandrapur"],
-  dhule: ["dhule", "shirpur"],
-  jalgaon: ["jalgaon", "faizpur"],
-  karad: ["karad"],
-  latur: ["latur", "tuljapur", "dharashiv"],
-  nanded: ["nanded"],
-  nandurbar: ["nandurbar"],
-  parbhani: ["parbhani"],
-  ratnagiri: ["ratnagiri", "deorukh", "kankavli"],
-  sangli: ["sangli", "sangola", "miraj", "jaysingpur"],
-  satara: ["satara", "phaltan", "panhala", "paniv"],
-  solapur: ["solapur", "barshi", "pandharpur", "akluj"],
-  wardha: ["wardha", "sevagram"],
-  washim: ["washim"],
-  yavatmal: ["yavatmal"],
-  lonere: ["lonere"],
-  akkalkuwa: ["akkalkuwa"],
-  dumbarwadi: ["dumbarwadi"],
-  haveli: ["haveli"],
-  isigaon: ["isigaon"],
-  karjat: ["karjat"],
-  khurd: ["khurd"],
-  kuran: ["kuran"],
-  lakoll: ["lakoll"],
-  nageer: ["nageer"],
-  sakoll: ["sakoll"],
-  shahapur: ["shahapur"],
-  shirgaon: ["shirgaon"],
-  sukhali: ["sukhali"],
-  wadwadi: ["wadwadi"],
-  waghall: ["waghall"],
-  yelgaon: ["yelgaon"],
-  panvel: ["panvel"],
-  raigad: ["raigad"]
-};
+  // City and district mapping for Maharashtra (expanded)
+  const cityDistrictMap: { [key: string]: string[] } = {
+    mumbai: ["mumbai", "thane", "navi mumbai", "panvel", "kalyan", "dombivli", "vasai", "virar", "andheri", "boisar", "ulhasnagar", "badlapur"],
+    pune: ["pune", "pcmc", "hadapsar", "wagholi", "shivaji nagar", "kothrud", "baramati", "lonavala", "narhe", "pisoli", "ravet", "sasewadi", "warje", "bhor", "indapur"],
+    nagpur: ["nagpur", "wardha", "bhandara", "ramtek", "sevagram", "sindhi", "badravati", "bamni"],
+    nashik: ["nashik", "malegaon", "satana", "kopargaon", "sinnar", "niphad", "egatpuri", "phar"],
+    aurangabad: ["aurangabad", "jalna", "paithan", "sambhajinagar", "beed", "ambejogai", "dharashiv", "tuljapur"],
+    kolhapur: ["kolhapur", "ichalkaranji", "karvir", "gadhinglaj", "jaysingpur", "miraj", "sangli", "yadrav", "warananagar", "panhala"],
+    ahmednagar: ["ahmednagar", "nagar", "sangamner", "nepti"],
+    akola: ["akola"],
+    amravati: ["amravati", "badnera", "chandrapur"],
+    bhusawal: ["bhusawal"],
+    buldhana: ["buldhana", "chikhali", "shegaon"],
+    chandrapur: ["chandrapur"],
+    dhule: ["dhule", "shirpur"],
+    jalgaon: ["jalgaon", "faizpur"],
+    karad: ["karad"],
+    latur: ["latur", "tuljapur", "dharashiv"],
+    nanded: ["nanded"],
+    nandurbar: ["nandurbar"],
+    parbhani: ["parbhani"],
+    ratnagiri: ["ratnagiri", "deorukh", "kankavli"],
+    sangli: ["sangli", "sangola", "miraj", "jaysingpur"],
+    satara: ["satara", "phaltan", "panhala", "paniv"],
+    solapur: ["solapur", "barshi", "pandharpur", "akluj"],
+    wardha: ["wardha", "sevagram"],
+    washim: ["washim"],
+    yavatmal: ["yavatmal"],
+    lonere: ["lonere"],
+    akkalkuwa: ["akkalkuwa"],
+    dumbarwadi: ["dumbarwadi"],
+    haveli: ["haveli"],
+    isigaon: ["isigaon"],
+    karjat: ["karjat"],
+    khurd: ["khurd"],
+    kuran: ["kuran"],
+    lakoll: ["lakoll"],
+    nageer: ["nageer"],
+    sakoll: ["sakoll"],
+    shahapur: ["shahapur"],
+    shirgaon: ["shirgaon"],
+    sukhali: ["sukhali"],
+    wadwadi: ["wadwadi"],
+    waghall: ["waghall"],
+    yelgaon: ["yelgaon"],
+    panvel: ["panvel"],
+    raigad: ["raigad"]
+  };
 
   // Filtering logic with mainBranch/subBranch and city mapping
   const filtered = colleges.filter((college) => {
@@ -443,26 +526,26 @@ const cityDistrictMap: { [key: string]: string[] } = {
     const matchesCutoff = diplomaPercent !== null ? (minCutoff !== null && diplomaPercent >= minCutoff) : true;
     return matchesLocation && matchesBranch && matchesCutoff;
   })
-  // Sort: exact match first, then by closest higher cutoff, then others
-  .sort((a, b) => {
-    const userCutoff = diplomaPercent || 0;
-    const aCut = (a as any)._minCutoff;
-    const bCut = (b as any)._minCutoff;
-    // Exact match comes first
-    if (aCut === userCutoff && bCut !== userCutoff) return -1;
-    if (bCut === userCutoff && aCut !== userCutoff) return 1;
-    // Then by how close the cutoff is (descending order)
-    if (aCut !== null && bCut !== null) {
-      return Math.abs(userCutoff - aCut) - Math.abs(userCutoff - bCut);
-    }
-    if (aCut === null) return 1;
-    if (bCut === null) return -1;
-    return 0;
-  });
+    // Sort: exact match first, then by closest higher cutoff, then others
+    .sort((a, b) => {
+      const userCutoff = diplomaPercent || 0;
+      const aCut = (a as any)._minCutoff;
+      const bCut = (b as any)._minCutoff;
+      // Exact match comes first
+      if (aCut === userCutoff && bCut !== userCutoff) return -1;
+      if (bCut === userCutoff && aCut !== userCutoff) return 1;
+      // Then by how close the cutoff is (descending order)
+      if (aCut !== null && bCut !== null) {
+        return Math.abs(userCutoff - aCut) - Math.abs(userCutoff - bCut);
+      }
+      if (aCut === null) return 1;
+      if (bCut === null) return -1;
+      return 0;
+    });
 
   // Extended list of Maharashtra cities including new entries from user
   const maharashtraCities = [
-    "Ahmednagar", "Akkalkuwa", "Akluj", "Akola", "Ambejogai", "Amravati", "Andheri", "Aurangabad", "Babulgaon", "Badlapur", "Badnera", "Badravati", "Bamni", "Baramati", "Barshi", "Beed", "Bhandara", "Bhandars", "Bhanders", "Bhima", "Bhor", "Bhusawal", "Boisar", "Buldhana", "Chandrapur", "Chikhali", "Deorukh", "Dharashiv", "Dhule", "Dumbarwadi", "Egaon", "Faizpur", "Falzpur", "Gadhinglaj", "Hagpur", "Haveli", "Indapur","Jalgaon", "Jalna", "Jaysingpur", "Kalyan", "Kankavli", "Karad", "Karjat", "Khurd", "Kolhapur", "Kopargaon", "Kuran", "Lakoll", "Latur", "Lonavala", "Lonere", "Mandal", "Miraj", "Mumbai", "Nagar",  "Nagpur", "Nanded", "Nandurbar", "Narhe", "Nashik", "Nepti", "Nile", "Ohar", "Palghar", "Pandharpur", "Panhala", "Paniv", "Panvel", "Parbhani", "Pisoli", "Pune", "Raigad", "Ramtek", "Ratnagiri", "Ravet","Sakoll", "Sambhajinagar",   "Sangamner", "Sangli", "Sangola", "Sasewadi", "Satara", "Sawantwadi", "Sevagram", "Shahapur", "Shegaon", "Shirgaon", "Shirpur", "Sindhi", "Sinnar", "Solapur", "Sukhall",  "Thane", "Tuljapur", "Ulhasnagar",  "Vasai", "Wadwadi", "Waghall", "Wagholi", "Warananagar", "Wardha", "Warghe", "Washim", "Yadrav", "Yavatmal", "Yelgaon"
+    "Ahmednagar", "Akkalkuwa", "Akluj", "Akola", "Ambejogai", "Amravati", "Andheri", "Aurangabad", "Babulgaon", "Badlapur", "Badnera", "Badravati", "Bamni", "Baramati", "Barshi", "Beed", "Bhandara", "Bhandars", "Bhanders", "Bhima", "Bhor", "Bhusawal", "Boisar", "Buldhana", "Chandrapur", "Chikhali", "Deorukh", "Dharashiv", "Dhule", "Dumbarwadi", "Egaon", "Faizpur", "Falzpur", "Gadhinglaj", "Hagpur", "Haveli", "Indapur", "Jalgaon", "Jalna", "Jaysingpur", "Kalyan", "Kankavli", "Karad", "Karjat", "Khurd", "Kolhapur", "Kopargaon", "Kuran", "Lakoll", "Latur", "Lonavala", "Lonere", "Mandal", "Miraj", "Mumbai", "Nagar", "Nagpur", "Nanded", "Nandurbar", "Narhe", "Nashik", "Nepti", "Nile", "Ohar", "Palghar", "Pandharpur", "Panhala", "Paniv", "Panvel", "Parbhani", "Pisoli", "Pune", "Raigad", "Ramtek", "Ratnagiri", "Ravet", "Sakoll", "Sambhajinagar", "Sangamner", "Sangli", "Sangola", "Sasewadi", "Satara", "Sawantwadi", "Sevagram", "Shahapur", "Shegaon", "Shirgaon", "Shirpur", "Sindhi", "Sinnar", "Solapur", "Sukhall", "Thane", "Tuljapur", "Ulhasnagar", "Vasai", "Wadwadi", "Waghall", "Wagholi", "Warananagar", "Wardha", "Warghe", "Washim", "Yadrav", "Yavatmal", "Yelgaon"
   ].sort((a, b) => a.localeCompare(b));
 
   // Handlers to reset formSubmitted if any input is cleared
@@ -506,343 +589,360 @@ const cityDistrictMap: { [key: string]: string[] } = {
     }
   }, [diplomaPercent, mainBranch, mainCategory, location]);
 
-  // Show loading spinner while auth resolves or usage count is being fetched (prevents flash of content)
-  if (authLoading || (user && usageLoading)) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
-      </main>
-    );
-  }
-
   return (
-    <main className="min-h-screen bg-white px-6 md:px-20 py-16 font-poppins">
-      <motion.h1
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
-        className="text-3xl md:text-5xl font-extrabold text-center text-slate-900 mb-8 md:mb-12"
-      >
-        Explore Engineering Colleges With Our AI model
-      </motion.h1>
+    <main className="min-h-screen bg-slate-50">
+      {/* Mobile-only: sticky top bar with back button */}
+      <div className="md:hidden bg-white border-b border-slate-100 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
+        <Link
+          href="/counselling"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          Back
+        </Link>
+        <span className="text-slate-300">|</span>
+        <span className="text-sm font-bold text-slate-800 truncate">College Explorer</span>
+      </div>
 
-      {/* Free Usage Counter - Only show for non-premium users */}
-      {isLoggedIn && !isPlusMember && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
+      {/* Heading shown on all screens */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-8 pt-6 md:pt-16 pb-2 md:pb-4 text-center">
+        <motion.h1
+          initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="max-w-3xl mx-auto mb-8 bg-slate-50 border border-slate-200 rounded-2xl p-4"
+          transition={{ duration: 0.6 }}
+          className="text-2xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 mb-2 md:mb-4"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-700">Free Searches Used</span>
-            <span className="text-sm font-bold text-slate-900">{usageCount} / 5</span>
-          </div>
-          <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
-            <div 
-              className="bg-slate-900 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(usageCount / 5) * 100}%` }}
-            ></div>
-          </div>
-          {usageCount >= 5 && (
-            <p className="text-xs text-slate-600 mt-2">You've reached your free limit. <Link href="/counselling/premium" className="text-slate-900 font-bold hover:underline">Upgrade to Premium</Link> for unlimited searches.</p>
-          )}
-        </motion.div>
-      )}
+          Explore Engineering Colleges With Our AI model
+        </motion.h1>
+        <p className="text-slate-500 text-sm sm:text-base">Fill in your details to find matching engineering colleges</p>
+      </div>
 
-      {/* Filter Form */}
-      <form
-        className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200"
-        onSubmit={async e => {
-          e.preventDefault();
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 md:py-6">
+        {/* Filter Form */}
+        <form
+          className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200"
+          onSubmit={async e => {
+            e.preventDefault();
 
-          // Check premium status and usage limit
-          if (!isLoggedIn) {
-            alert("Please login to use this feature.");
-            return;
-          }
+            // Check premium status and usage limit
+            if (!isLoggedIn) {
+              alert("Please login to use this feature.");
+              return;
+            }
 
-          // Require phone number for using this feature
-          const currUser = auth.currentUser;
-          if (currUser) {
-            let hasPhone = !!currUser.phoneNumber;
-            try {
+            // Require phone number for using this feature
+            const currUser = auth.currentUser;
+            if (currUser) {
+              let hasPhone = !!currUser.phoneNumber;
+              try {
+                if (!hasPhone) {
+                  const snap = await get(ref(database, `Users/${currUser.uid}/phone`));
+                  if (snap.exists() && snap.val()) hasPhone = true;
+                }
+              } catch (e) {
+                // ignore
+              }
               if (!hasPhone) {
-                const snap = await get(ref(database, `Users/${currUser.uid}/phone`));
-                if (snap.exists() && snap.val()) hasPhone = true;
+                setShowAddNumberPopup(true);
+                return;
               }
-            } catch (e) {
-              // ignore
             }
-            if (!hasPhone) {
-              setShowAddNumberPopup(true);
-              return;
-            }
-          }
 
-          // Show results panel first
-          setFormSubmitted(true);
+            // Show results panel first
+            setFormSubmitted(true);
 
-          // Only increment usage for non-premium users when results are found
-          if (!isPlusMember) {
-            if (usageCount >= 5) {
-              setShowPremiumPopup(true);
-              return;
-            }
-            // `filtered` contains the matching results for current form state
-            if (filtered.length > 0) {
-              const newCount = Math.min(usageCount + 1, 5);
-              const user = auth.currentUser;
-              if (user) {
-                set(ref(database, `Users/${user.uid}/collegeExplorerUsage`), newCount);
+            // Only increment usage for non-premium users when results are found
+            if (!isPlusMember) {
+              // `filtered` contains the matching results for current form state
+              if (filtered.length > 0) {
+                const newCount = usageCount + 1;
+                const user = auth.currentUser;
+                if (user) {
+                  set(ref(database, `Usage/collegeExplorer/${user.uid}`), newCount).catch((err) => {
+                    console.warn("Write to Usage/collegeExplorer failed, attempting Users fallback:", err);
+                    return set(ref(database, `Users/${user.uid}/usage/collegeExplorer`), newCount).catch((e2) => {
+                      console.error("Fallback write also failed:", e2);
+                    });
+                  });
+                }
+                setUsageCount(newCount);
               }
-              setUsageCount(newCount);
-              if (newCount >= 5) setShowPremiumPopup(true);
             }
-          }
-        }}
-      >
-        <input
-          type="number"
-          step="0.01"
-          placeholder="Diploma Percentage"
-          value={diplomaPercent || ""}
-          onChange={handleDiplomaPercentChange}
-          className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          min={0}
-          max={100}
-          required
-        />
-        <select
-          value={mainBranch}
-          onChange={handleMainBranchChange}
-          className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          required
+          }}
         >
-          <option value="">Select Main Branch</option>
-          {mainBranches.map((mb, i) => (
-            <option key={i} value={mb}>{mb}</option>
-          ))}
-        </select>
-        {mainBranch && (
-          <select
-            value={subBranch}
-            onChange={handleSubBranchChange}
-            className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          >
-            <option value="">Select Sub Branch (optional)</option>
-            {mainBranchMap[mainBranch].map((sb, i) => (
-              <option key={i} value={sb}>{sb}</option>
-            ))}
-          </select>
-        )}
-        <select
-          value={mainCategory}
-          onChange={handleMainCategoryChange}
-          className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          required
-        >
-          <option value="">Select Main Category</option>
-          {mainCategories.map((cat, i) => (
-            <option key={i} value={cat}>{cat}</option>
-          ))}
-        </select>
-        {mainCategory && (
-          <select
-            value={category}
-            onChange={handleCategoryChange}
-            className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          >
-            <option value="">Select Sub Category</option>
-            {mainCategoryMap[mainCategory].map((subcat, i) => (
-              <option key={i} value={subcat}>{subcat}</option>
-            ))}
-          </select>
-        )}
-        <select
-          value={location}
-          onChange={handleLocationChange}
-          className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          required
-        >
-          <option value="">Select City</option>
-          {maharashtraCities.map((loc, i) => (
-            <option key={i} value={loc}>{loc}</option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          className="md:col-span-4 bg-slate-900 hover:bg-black text-white px-6 py-3.5 rounded-xl shadow-md font-bold text-lg transition duration-300 mt-2 w-full"
-        >
-          Generate List
-        </button>
-      </form>
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Diploma Percentage *</label>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="e.g. 78.50"
+              value={diplomaPercent || ""}
+              onChange={handleDiplomaPercentChange}
+              className="p-2.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-sm text-slate-800 bg-white"
+              min={0}
+              max={100}
+              required
+            />
+          </div>
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Main Branch *</label>
+            <SearchableSelect
+              options={mainBranches}
+              value={mainBranch}
+              onChange={(v) => { setMainBranch(v); setSubBranch(""); if (!v) setFormSubmitted(false); }}
+              placeholder="Search branch..."
+              required
+            />
+          </div>
+          {mainBranch && (
+            <div className="col-span-1">
+              <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Sub Branch <span className="text-slate-300">(optional)</span></label>
+              <SearchableSelect
+                options={mainBranchMap[mainBranch] || []}
+                value={subBranch}
+                onChange={(v) => { setSubBranch(v); }}
+                placeholder="Search sub-branch..."
+              />
+            </div>
+          )}
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Main Category *</label>
+            <SearchableSelect
+              options={mainCategories}
+              value={mainCategory}
+              onChange={(v) => { setMainCategory(v); setCategory(""); if (!v) setFormSubmitted(false); }}
+              placeholder="Search category..."
+              required
+            />
+          </div>
+          {mainCategory && (
+            <div className="col-span-1">
+              <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Sub Category <span className="text-slate-300">(optional)</span></label>
+              <SearchableSelect
+                options={mainCategoryMap[mainCategory] || []}
+                value={category}
+                onChange={(v) => { setCategory(v); }}
+                placeholder="Search sub-category..."
+              />
+            </div>
+          )}
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">City *</label>
+            <SearchableSelect
+              options={maharashtraCities}
+              value={location}
+              onChange={(v) => { setLocation(v); if (!v) setFormSubmitted(false); }}
+              placeholder="Search city..."
+              required
+            />
+          </div>
+          <div className="col-span-1 sm:col-span-2">
+            <button
+              type="submit"
+              disabled={authLoading || (!!user && usageLoading)}
+              className="w-full bg-slate-900 hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold text-sm transition duration-300 flex items-center justify-center gap-2"
+            >
+              {authLoading ? (
+                <><div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Checking...</>
+              ) : "Generate College List"}
+            </button>
+          </div>
+        </form>
+      </div>
 
       {/* College Cards */}
       {loading ? (
-        <p className="text-center text-slate-500 mt-10">Loading colleges...</p>
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 mt-10">
+          <p className="text-center text-slate-500 font-medium">Loading colleges...</p>
+        </div>
       ) : formSubmitted && diplomaPercent !== null && mainBranch && mainCategory && location ? (
-        <div className="w-full flex flex-col gap-6">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-16 flex flex-col gap-6">
           {filtered.length === 0 ? (
             <p className="text-center text-slate-500 mt-10 col-span-full font-medium">No colleges match your criteria.</p>
           ) : (
             <div className="w-full flex flex-col gap-6">
-              {filtered.slice(0, 20).map((college, index) => {
-                // If both subBranch and category are selected, show only that branch and cutoff
-                if (subBranch && category) {
-                  const selectedCutoff = college.Cutoffs && college.Cutoffs.find((cut: Cutoff) => cut.Category === category);
-                  return (
-                     <motion.div
-                      key={index}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.04 }}
-                      viewport={{ once: true }}
-                      className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
-                    >
-                      <div className="flex-1 w-full">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-lg font-bold text-slate-900">{index + 1}.</span>
-                          <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                            <span>{college["College Name"]}</span>
-                            <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
-                          </h3>
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
-                          <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
-                          <span>🎓 <span className="font-semibold text-slate-700">{college["Course Name"]}</span></span>
-                        </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                          <span className="font-semibold text-slate-600">Cutoff ({category}):</span>
-                          {selectedCutoff ? (
-                            <span className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
-                              {selectedCutoff.Score} <span className="text-slate-500 font-normal">(Rank: {selectedCutoff.Rank})</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 text-sm">No cutoff data for this category.</span>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                } else if (category) {
-                  // If only category is selected, show only that cutoff (all branches)
-                  const selectedCutoff = college.Cutoffs && college.Cutoffs.find((cut: Cutoff) => cut.Category === category);
-                  return (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.04 }}
-                      viewport={{ once: true }}
-                      className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
-                    >
-                      <div className="flex-1 w-full">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-lg font-bold text-slate-900">{index + 1}.</span>
-                          <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                            <span>{college["College Name"]}</span>
-                            <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
-                          </h3>
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
-                          <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
-                          <span>🎓 <span className="font-semibold text-slate-700">{normalizeBranch(college["Course Name"])}</span></span>
-                        </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                          <span className="font-semibold text-slate-600">Cutoff ({category}):</span>
-                          {selectedCutoff ? (
-                            <span className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
-                              {selectedCutoff.Score} <span className="text-slate-500 font-normal">(Rank: {selectedCutoff.Rank})</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 text-sm">No cutoff data for this category.</span>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                } else if (mainCategory && mainCategoryMap[mainCategory]) {
-                  // If only mainCategory is selected, show all subcategory cutoffs for this main category
-                  const subCategories = mainCategoryMap[mainCategory];
-                  const cutoffs = (college.Cutoffs || []).filter((cut: Cutoff) => subCategories.includes(cut.Category));
-                  return (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.04 }}
-                      viewport={{ once: true }}
-                      className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
-                    >
-                      <div className="flex-1 w-full">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-lg font-bold text-slate-900">{index + 1}.</span>
-                          <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                            <span>{college["College Name"]}</span>
-                            <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
-                          </h3>
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
-                          <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
-                          <span>🎓 <span className="font-semibold text-slate-700">{college["Course Name"]}</span></span>
-                        </div>
-                        <div className="flex flex-col gap-1 mb-2">
-                          <span className="font-semibold text-slate-600">Cutoffs ({mainCategory}):</span>
-                          {cutoffs.length > 0 ? (
-                            <div className="flex flex-wrap gap-2 mt-1">
-                              {cutoffs.map((cut, i) => (
-                                <span key={i} className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
-                                  {cut.Category}: {cut.Score} <span className="text-slate-500 font-normal">(Rank: {cut.Rank})</span>
-                                </span>
-                              ))}
+              {/* Download / Print Report Button */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-600">{filtered.slice(0, 20).length} colleges found</p>
+                <button
+                  onClick={() => setShowPrintReport(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                  Download / Print PDF
+                </button>
+              </div>
+
+              {/* Print Report Modal */}
+              {showPrintReport && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 overflow-y-auto p-4 flex items-start justify-center pt-10">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">
+                    <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                      <h2 className="text-base font-bold text-slate-900">College Report Preview</h2>
+                      <button onClick={() => setShowPrintReport(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div className="p-6 overflow-y-auto max-h-[80vh]">
+                      <CollegePrintReport
+                        colleges={filtered.slice(0, 20)}
+                        category={category || mainCategory}
+                        branch={subBranch || mainBranch}
+                        city={location}
+                        scoreLabel={diplomaPercent ? `${diplomaPercent}%` : undefined}
+                        onClose={() => setShowPrintReport(false)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* ── FLAT COLLEGE LIST with Chance Tag ── */}
+              {(() => {
+                const userScore = diplomaPercent || 0;
+                const activeCategory = category || (mainCategory && mainCategoryMap[mainCategory]?.[0]) || "GOPEN";
+
+                const getCutoff = (college: College): number | null => {
+                  if (!college.Cutoffs) return null;
+                  let cut = college.Cutoffs.find((c: Cutoff) => c.Category === activeCategory);
+                  if (!cut && mainCategory && mainCategoryMap[mainCategory]) {
+                    for (const sub of mainCategoryMap[mainCategory]) {
+                      cut = college.Cutoffs.find((c: Cutoff) => c.Category === sub);
+                      if (cut) break;
+                    }
+                  }
+                  if (!cut) cut = college.Cutoffs.find((c: Cutoff) => c.Category === "GOPEN");
+                  if (cut?.Score) return parseFloat(cut.Score.replace("%", ""));
+                  return null;
+                };
+
+                const getDisplayCutoff = (college: College) => {
+                  if (!college.Cutoffs) return null;
+                  let cut = college.Cutoffs.find((c: Cutoff) => c.Category === activeCategory);
+                  if (!cut && mainCategory && mainCategoryMap[mainCategory]) {
+                    for (const sub of mainCategoryMap[mainCategory]) {
+                      cut = college.Cutoffs.find((c: Cutoff) => c.Category === sub);
+                      if (cut) break;
+                    }
+                  }
+                  if (!cut) cut = college.Cutoffs.find((c: Cutoff) => c.Category === "GOPEN");
+                  return cut || null;
+                };
+
+                const getChance = (college: College): "dream" | "medium" | "safe" | null => {
+                  const co = getCutoff(college);
+                  if (co === null) return null;
+                  if (co > userScore + 3) return "dream";
+                  if (co >= userScore - 3) return "medium";
+                  return "safe";
+                };
+
+                const displayList = filtered.slice(0, 20);
+
+                return (
+                  <div className="flex flex-col gap-4">
+                    {displayList.map((college, index) => {
+                      const cutoffObj = getDisplayCutoff(college);
+                      const cutoffScore = getCutoff(college);
+                      const chance = getChance(college);
+                      const rawDiff = cutoffScore !== null ? cutoffScore - userScore : null;
+
+                      const chanceTag = {
+                        dream:  { label: "Dream",        dot: "bg-red-500",     text: "text-red-600",     bg: "bg-red-50 border-red-200" },
+                        medium: { label: "Medium Chance", dot: "bg-amber-500",   text: "text-amber-700",   bg: "bg-amber-50 border-amber-200" },
+                        safe:   { label: "High Chance",   dot: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
+                      }[chance as "dream" | "medium" | "safe"] ?? null;
+
+                      return (
+                        <motion.div
+                          key={index}
+                          initial={{ opacity: 0, y: 16 }}
+                          whileInView={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.03 }}
+                          viewport={{ once: true }}
+                          className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
+                        >
+                          {/* Dark header strip */}
+                          <div className="bg-slate-900 px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <span className="text-slate-400 text-sm font-bold shrink-0 mt-0.5">#{index + 1}</span>
+                              <h3 className="text-white font-bold text-sm md:text-base leading-snug break-words">
+                                {college["College Name"]}
+                              </h3>
                             </div>
-                          ) : (
-                            <span className="text-slate-400 text-sm">No cutoff data for these subcategories.</span>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                }
-                return null;
-              })}
+                            {chanceTag && (
+                              <span className={`self-start sm:self-auto shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${chanceTag.bg} ${chanceTag.text}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${chanceTag.dot}`} />
+                                {chanceTag.label}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Card body */}
+                          <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
+                            {/* Info column */}
+                            <div className="flex-1 min-w-0 flex flex-col justify-between">
+                              <div>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                  <span className="inline-block bg-slate-100 text-slate-700 text-[11px] font-semibold px-2.5 py-1 rounded-full">
+                                    {college.Status}
+                                  </span>
+                                  <span className="inline-block bg-slate-100 text-slate-500 text-[11px] font-medium px-2.5 py-1 rounded-full">
+                                    Code: {college["College Code"]}
+                                  </span>
+                                </div>
+                                <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:gap-x-5 sm:gap-y-1.5 text-sm text-slate-500">
+                                  <span className="flex items-center gap-1.5">
+                                    <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    </svg>
+                                    <span className="font-semibold text-slate-800">{college.City}</span>
+                                  </span>
+                                  <span className="flex items-start gap-1.5">
+                                    <svg className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                    </svg>
+                                    <span className="text-slate-700 font-medium break-words leading-relaxed">{normalizeBranch(college["Course Name"])}</span>
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Cutoff column */}
+                            {cutoffObj && (
+                              <div className="border-t border-slate-100 pt-4 mt-2 sm:border-t-0 sm:border-l sm:border-slate-100 sm:pt-0 sm:pl-5 sm:mt-0 shrink-0 flex flex-col justify-center">
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                                  Cutoff ({cutoffObj.Category})
+                                </p>
+                                <div className="text-2xl font-extrabold text-slate-900 leading-none">
+                                  {cutoffObj.Score}
+                                </div>
+                                <div className="text-xs text-slate-400 mt-0.5">Rank: {cutoffObj.Rank}</div>
+                                {rawDiff !== null && (
+                                  <div className={`text-[11px] font-semibold mt-1.5 ${rawDiff > 0 ? "text-red-500" : "text-emerald-600"}`}>
+                                    {rawDiff > 0
+                                      ? `▲ ${rawDiff.toFixed(1)}% above your score`
+                                      : `▼ ${Math.abs(rawDiff).toFixed(1)}% below your score`}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                    {displayList.length === 0 && (
+                      <p className="text-center text-slate-500 mt-10 font-medium">No colleges match your criteria.</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
       ) : null}
 
-      {/* ── Premium Popup ── */}
       <AnimatePresence>
-        {showPremiumPopup && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 px-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
-              className="bg-white p-8 md:p-10 rounded-3xl shadow-2xl w-full max-w-lg border border-slate-200 text-center relative overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-slate-700 to-slate-900"></div>
-              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6 text-slate-900 shadow-sm border border-slate-200 text-3xl">
-                👑
-              </div>
-              <h3 className="text-3xl font-black mb-3 text-slate-900 tracking-tight">Free Limit Reached</h3>
-              <p className="mb-8 text-base text-slate-500 leading-relaxed font-medium px-4">
-                You have used your 5 free college searches. Upgrade to Premium to get unlimited access, full CAP round support, and 1:1 expert mentorship.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/counselling/premium"
-                  className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900 hover:bg-black text-white font-bold transition-all shadow-lg text-sm flex items-center justify-center gap-2">
-                  Upgrade to Premium
-                </Link>
-                <button onClick={() => setShowPremiumPopup(false)}
-                  className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 font-bold transition-colors text-sm">
-                  Cancel
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
         {showAddNumberPopup && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

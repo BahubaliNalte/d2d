@@ -1,0 +1,66 @@
+{
+  "rules": {
+    "AppConfig": {
+      ".read": true,
+      ".write": "auth != null && root.child('Users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    "PlusMembers": {
+      ".read": "auth != null",
+      ".write": "true"
+    },
+    "Users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "banners": {
+      ".read": "true",
+      ".write": "true"
+    },
+    "clgdb": {
+      ".read": "auth != null",
+      ".write": "false"
+    },
+    "clientReviews": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "feedbackImages": {
+      ".read": "true",
+      ".write": "true"
+    },
+    "fund": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "hostels": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "prebook": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "mentorshipRequests": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "requestclglist": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "n&a": {
+      ".read": "true",
+      ".write": "true"
+    },
+    "Usage": {
+      "$feature": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    }
+  }
+}

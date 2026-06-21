@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { auth, database } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from "firebase/auth";
-import { ref, get, update } from "firebase/database";
+import { ref, get, update, onValue } from "firebase/database";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FaArrowLeft, FaUser, FaEnvelope, FaPhone, FaSignOutAlt, FaCrown } from "react-icons/fa";
@@ -27,30 +27,47 @@ export default function ProfilePage() {
 
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).then(() => {
+      let userRefUnsub: (() => void) | null = null;
       const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
           setUserUid(user.uid);
           setIsGoogleUser(user.providerData.some((p) => p.providerId === "google.com"));
+
           const userRef = ref(database, `Users/${user.uid}`);
-          const snapshot = await get(userRef);
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            let phone = data.phone || data["mobile no"] || data.mobile || "";
-            if (!phone) {
-              const plusRef = ref(database, `PlusMembers/${user.uid}`);
-              const plusSnap = await get(plusRef);
-              if (plusSnap.exists()) {
-                const plusData = plusSnap.val();
-                phone = plusData.phone || "";
-              }
+          try {
+            const snapshot = await get(userRef);
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+              let phone = data.phone || data["mobile no"] || data.mobile || "";
+              setUserData({
+                email: data.email || "",
+                name: data.name || "",
+                phone,
+              });
+              // Don't auto-open the edit form; user presses Add/Edit button instead
             }
-            setUserData({
-              email: data.email || "",
-              name: data.name || "",
-              phone,
-            });
-            setShowAddPhone(!phone && user.providerData.some((p) => p.providerId === "google.com"));
+          } catch (err) {
+            console.error("Profile: initial user read failed", err);
           }
+
+          // Subscribe to realtime updates so saved phone shows immediately
+          try {
+            userRefUnsub = onValue(userRef, (snapshot) => {
+              if (snapshot.exists()) {
+                const data = snapshot.val();
+                const phone = data.phone || data["mobile no"] || data.mobile || "";
+                setUserData({
+                  email: data.email || "",
+                  name: data.name || "",
+                  phone,
+                });
+                // Don't auto-open the edit form on realtime updates
+              }
+            });
+          } catch (err) {
+            console.error("Profile: realtime subscription failed", err);
+          }
+
           const plusRef = ref(database, `PlusMembers/${user.uid}`);
           const plusSnap = await get(plusRef);
           setIsPlusMember(plusSnap.exists());
@@ -61,7 +78,11 @@ export default function ProfilePage() {
         }
         setLoading(false);
       });
-      return () => unsubscribe();
+
+      return () => {
+        if (userRefUnsub) userRefUnsub();
+        unsubscribe();
+      };
     });
   }, [router]);
 
@@ -165,36 +186,57 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-                  <FaPhone className="text-emerald-500 text-sm" />
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <FaPhone className="text-emerald-500 text-sm" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Phone</p>
+                    <p className="text-sm font-medium text-slate-700">{userData?.phone || "Not provided"}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Phone</p>
-                  <p className="text-sm font-medium text-slate-700">{userData?.phone || "Not provided"}</p>
-                </div>
+                {!showAddPhone && (
+                  <button
+                    onClick={() => {
+                      setNewPhone(userData?.phone || "");
+                      setShowAddPhone(true);
+                    }}
+                    className="text-xs font-semibold text-slate-900 hover:text-black hover:underline transition"
+                  >
+                    {userData?.phone ? "Edit" : "Add"}
+                  </button>
+                )}
               </div>
 
-              {showAddPhone && (
+               {showAddPhone && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
-                  className="p-4 bg-blue-50/50 rounded-xl border border-blue-100"
+                  className="p-4 bg-slate-50 rounded-xl border border-slate-200 mt-2"
                 >
-                  <p className="text-xs text-blue-600 font-medium mb-2">Add your phone number</p>
+                  <p className="text-xs font-semibold text-slate-500 mb-2">
+                    {userData?.phone ? "Edit Phone Number" : "Add Phone Number"}
+                  </p>
                   <div className="flex gap-2">
                     <input
                       type="tel"
-                      className="input-field text-sm flex-1"
+                      className="px-3 py-2 border border-slate-200 focus:border-slate-500 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none text-sm text-slate-850 bg-white transition flex-1"
                       placeholder="Enter 10-digit phone"
                       value={newPhone}
                       onChange={e => setNewPhone(e.target.value)}
                     />
                     <button
-                      className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition"
+                      className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 rounded-xl hover:bg-black transition shrink-0"
                       onClick={handleAddPhone}
                     >
                       Save
+                    </button>
+                    <button
+                      className="px-3 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 bg-slate-200/60 rounded-xl transition shrink-0"
+                      onClick={() => setShowAddPhone(false)}
+                    >
+                      Cancel
                     </button>
                   </div>
                 </motion.div>

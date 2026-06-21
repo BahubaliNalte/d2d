@@ -67,13 +67,8 @@ export function useRequireAuth(
       // Use one-shot get() instead of onValue() to avoid repeated premium
       // checks and repeated redirect calls on every Firebase real-time update.
       try {
-        const plusSnap = await get(ref(database, "PlusMembers"));
-        let found = false;
-        if (plusSnap.exists()) {
-          plusSnap.forEach((child) => {
-            if (child.val()?.uid === firebaseUser.uid) found = true;
-          });
-        }
+        const plusSnap = await get(ref(database, `PlusMembers/${firebaseUser.uid}`));
+        const found = plusSnap.exists();
         setIsPremium(found);
         setAuthResolved(true);
         setLoading(false);

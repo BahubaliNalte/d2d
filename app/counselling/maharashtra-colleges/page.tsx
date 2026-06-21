@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { database } from "@/lib/firebase";
-import { ref, onValue } from "firebase/database";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { getCollegesFromDb } from "@/lib/collegesCache";
 
 interface Cutoff {
   Category: string;
@@ -35,18 +34,16 @@ export default function MaharashtraCollegesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const clgRef = ref(database, "clgdb");
-    const unsubscribe = onValue(clgRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const arr = Array.isArray(data) ? data : Object.values(data);
+    getCollegesFromDb()
+      .then((arr) => {
         setColleges(arr as College[]);
-      } else {
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to read clgdb:", err);
         setColleges([]);
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
+        setLoading(false);
+      });
   }, []);
 
   // Show loading spinner while auth resolves (prevents flash of content)

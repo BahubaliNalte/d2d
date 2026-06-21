@@ -17,6 +17,7 @@ import { get, ref as dbRef, set } from "firebase/database";
 import { database, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import ProjectRequestTable from "./ProjectRequestTable";
 
 const adminSections = [
 	{
@@ -58,6 +59,11 @@ const adminSections = [
 		key: "successStories",
 		label: "Success Stories",
 		desc: "Manage successfully placed students on the premium page.",
+	},
+	{
+		key: "projectRequests",
+		label: "Project Requests",
+		desc: "View and manage submitted project ideas from users.",
 	},
 ];
 
@@ -316,6 +322,17 @@ export default function AdminPage() {
 								Dynamically add placed students with their LinkedIn URLs to display on the premium page marquee.
 							</p>
 							<SuccessStoryAdmin />
+						</div>
+					)}
+					{section === "projectRequests" && (
+						<div>
+							<h2 className="text-2xl font-bold mb-4 text-slate-900">
+								Project Requests
+							</h2>
+							<p className="mb-4 text-slate-600 text-sm">
+								View and manage project ideas submitted by users.
+							</p>
+							<ProjectRequestTable />
 						</div>
 					)}
 				</section>

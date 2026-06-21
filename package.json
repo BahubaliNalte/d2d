@@ -6,6 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
+    "migrate-usage": "node scripts/migrate-usage.js",
     "lint": "next lint"
   },
   "dependencies": {

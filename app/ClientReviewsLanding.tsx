@@ -92,10 +92,8 @@ export default function ClientReviewsLanding() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: i * 0.1 }}
-            className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 min-w-[260px] max-w-xs w-full"
+            className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 min-w-0 max-w-xs w-full"
           >
-            {/* Quote icon */}
-            <div className="text-blue-100 text-3xl font-serif mb-2 leading-none">"</div>
             <p className="text-sm text-slate-600 leading-relaxed mb-4">{r.review}</p>
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
@@ -109,7 +107,7 @@ export default function ClientReviewsLanding() {
 
       {/* Dots */}
       {reviews.length > visibleCount && (
-        <div className="flex justify-center gap-2 mt-8">
+        <div className="flex justify-center gap-2 mt-4">
           {Array.from({ length: reviews.length }).map((_, idx) => (
             <button
               key={idx}

@@ -63,9 +63,6 @@ export default function PremiumPage() {
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isPlusMember, setIsPlusMember] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showPhoneModal, setShowPhoneModal] = useState(false);
-  const [phonePrompt, setPhonePrompt] = useState("");
-  const [phoneInput, setPhoneInput] = useState("");
   const [premiumPrice, setPremiumPrice] = useState<number | null>(null);
   const [stories, setStories] = useState(fallbackStories);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -139,14 +136,6 @@ export default function PremiumPage() {
         }
       }
 
-      if (user.providerData.some((p) => p.providerId === "google.com") && !phone) {
-        setShowPhoneModal(true);
-        setPhonePrompt("Please enter your phone number before purchasing premium membership.");
-        isProcessingRef.current = false;
-        setIsProcessing(false);
-        return;
-      }
-
       startRazorpay(phone);
     } catch (error) {
       console.error("Error in handleBuyNow:", error);
@@ -154,29 +143,6 @@ export default function PremiumPage() {
       setIsProcessing(false);
     }
   }, [cachedPhone]);
-
-  const handleSavePhoneAndPay = useCallback(async () => {
-    if (isProcessingRef.current) return;
-    
-    const user = auth.currentUser;
-    if (!user) return;
-    if (!/^\d{10}$/.test(phoneInput)) {
-      setPhonePrompt("Please enter a valid 10-digit phone number.");
-      return;
-    }
-
-    isProcessingRef.current = true;
-    try {
-      await set(dbRef(database, 'Users/' + user.uid + '/phone'), phoneInput);
-      setCachedPhone(phoneInput);
-      setShowPhoneModal(false);
-      startRazorpay(phoneInput);
-    } catch (error) {
-      console.error("Error saving phone:", error);
-      toast.error("Failed to save phone number");
-      isProcessingRef.current = false;
-    }
-  }, [phoneInput]);
 
   const startRazorpay = useCallback(async (phone: string) => {
     const user = auth.currentUser;
@@ -295,123 +261,95 @@ export default function PremiumPage() {
     <main className="min-h-screen bg-white overflow-x-hidden">
       <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
-      {/* Modal for phone input */}
-      <AnimatePresence>
-        {showPhoneModal && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 10 }}
-              className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-slate-200"
-            >
-              <h3 className="text-2xl font-bold text-slate-900 mb-2">Enter Your Phone</h3>
-              <p className="text-slate-600 text-sm mb-6">{phonePrompt}</p>
-              <input
-                type="tel"
-                value={phoneInput}
-                onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                placeholder="10-digit phone number"
-                maxLength={10}
-                className="w-full px-4 py-3 border border-slate-200 rounded-xl mb-4 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-100"
-              />
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowPhoneModal(false)}
-                  disabled={isProcessing}
-                  className={`flex-1 px-4 py-2.5 rounded-lg font-bold transition ${
-                    isProcessing
-                      ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                      : "bg-slate-100 hover:bg-slate-200 text-slate-900"
-                  }`}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSavePhoneAndPay}
-                  disabled={isProcessing}
-                  className={`flex-1 px-4 py-2.5 rounded-lg font-bold transition flex items-center justify-center gap-2 ${
-                    isProcessing
-                      ? "bg-slate-400 text-slate-200 cursor-not-allowed"
-                      : "bg-slate-900 hover:bg-black text-white"
-                  }`}
-                >
-                  {isProcessing ? (
-                    <>
-                      <span className="w-3 h-3 rounded-full border-2 border-slate-200 border-t-white animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    "Continue"
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ══════════════════════════════════════════════════════════════
-          HERO SECTION
-      ══════════════════════════════════════════════════════════════ */}
-      <section className="relative min-h-screen flex items-center justify-center pt-24 pb-12 px-6 md:px-12 bg-slate-50 border-b border-slate-200 overflow-hidden">
+      {/* ── HERO SECTION ── */}
+      <section className="relative min-h-screen flex items-center justify-center pt-28 pb-16 px-6 md:px-12 lg:px-20 bg-slate-50 border-b border-slate-200 overflow-hidden">
         {/* Background */}
         <div className="absolute inset-0 opacity-30 pointer-events-none">
           <div className="absolute top-20 right-0 w-96 h-96 bg-blue-100 rounded-full blur-3xl" />
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-100 rounded-full blur-3xl" />
         </div>
 
-        <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="relative max-w-3xl mx-auto text-center">
+        <div className="max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative z-10">
+          
+          {/* Left Column: Hero Text */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full px-4 py-2 mb-6 shadow-sm"
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8 }}
+            className="lg:col-span-6 text-left"
           >
-            <FaCrown className="text-slate-900" />
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-700">Premium Membership</span>
+            <div className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full px-4 py-2 mb-6 shadow-sm">
+              <FaCrown className="text-slate-900" />
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-700">Premium Membership</span>
+            </div>
+
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-slate-900 mb-6 leading-[1.1] tracking-tight">
+              Unlock Your<br />
+              <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
+                Perfect DSE Seat
+              </span>
+            </h1>
+
+            <p className="text-base md:text-lg text-slate-600 mb-10 leading-relaxed font-medium max-w-xl">
+              Expert 1:1 mentorship, AI-powered college matching, and full CAP round support. Join 500+ successful students already admitted to their dream colleges.
+            </p>
+
+            <motion.button
+              whileHover={{ scale: isProcessing ? 1 : 1.05 }}
+              whileTap={{ scale: isProcessing ? 1 : 0.95 }}
+              onClick={handleBuyNow}
+              disabled={isProcessing}
+              className={`inline-flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-lg transition-all shadow-2xl shadow-slate-900/30 ${
+                isProcessing
+                  ? "bg-slate-400 text-slate-200 cursor-not-allowed"
+                  : "bg-slate-900 hover:bg-black text-white"
+              }`}
+            >
+              {isProcessing ? (
+                <>
+                  <span className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-white animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <FaCrown />
+                  Join Premium
+                </>
+              )}
+            </motion.button>
           </motion.div>
 
-          <h1 className="text-5xl md:text-6xl font-black text-slate-900 mb-6 leading-[1.1] tracking-tight">
-            Unlock Your<br />
-            <span className="bg-gradient-to-r from-slate-900 to-slate-600 bg-clip-text text-transparent">
-              Perfect DSE Seat
-            </span>
-          </h1>
-
-          <p className="text-lg md:text-xl text-slate-600 max-w-lg mx-auto mb-10 leading-relaxed font-medium">
-            Expert 1:1 mentorship, AI-powered college matching, and full CAP round support. Join 500+ successful students already admitted to their dream colleges.
-          </p>
-
-          <motion.button
-            whileHover={{ scale: isProcessing ? 1 : 1.05 }}
-            whileTap={{ scale: isProcessing ? 1 : 0.95 }}
-            onClick={handleBuyNow}
-            disabled={isProcessing}
-            className={`inline-flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-lg transition-all shadow-2xl shadow-slate-900/30 ${
-              isProcessing
-                ? "bg-slate-400 text-slate-200 cursor-not-allowed"
-                : "bg-slate-900 hover:bg-black text-white"
-            }`}
+          {/* Right Column: Built For Your Success Grid */}
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="lg:col-span-6 w-full"
           >
-            {isProcessing ? (
-              <>
-                <span className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-white animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>
-                <FaCrown />
-                Join Premium
-              </>
-            )}
-          </motion.button>
-        </motion.div>
+            <div className="bg-white/40 backdrop-blur-md rounded-3xl p-6 md:p-8 border border-white/60 shadow-xl shadow-slate-200/50">
+              <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 mb-2 tracking-tight">Built For Your Success</h2>
+              <p className="text-slate-500 text-sm mb-6 leading-relaxed font-medium">
+                Clean, deterministic, and highly accurate tools to ensure you lock the best possible seat in Maharashtra.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {bentoFeatures.map((item, i) => (
+                  <div
+                    key={i}
+                    className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col items-start hover:border-slate-400 hover:shadow-md transition-all duration-300"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-3">
+                      {React.createElement(item.icon, { className: "text-lg text-slate-900" })}
+                    </div>
+                    <h3 className="font-bold text-slate-900 text-sm mb-1">{item.title}</h3>
+                    <p className="text-slate-500 text-xs leading-normal font-medium">{item.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+
+        </div>
       </section>
 
       {/* ══════════════════════════════════════════════════════════════
@@ -462,34 +400,7 @@ export default function PremiumPage() {
           </div>
         </div>
 
-        {/* ══════════════════════════════════════════════════════════════
-            BENTO FEATURE GRID
-        ══════════════════════════════════════════════════════════════ */}
-        <section id="features" className="py-24 px-6 md:px-12 bg-white">
-          <div className="max-w-5xl mx-auto">
-            <div className="mb-16 text-center">
-              <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-4 tracking-tight">Built For Your Success</h2>
-              <p className="text-slate-500 text-base max-w-lg mx-auto">
-                Clean, deterministic, and highly accurate tools to ensure you lock the best possible seat in Maharashtra.
-              </p>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {bentoFeatures.map((item, i) => (
-                <div
-                  key={i}
-                  className={`${item.span} group bg-slate-50 rounded-3xl p-8 border border-slate-200 hover:border-slate-300 transition-colors duration-300`}
-                >
-                    <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center mb-6 shadow-sm group-hover:scale-105 transition-transform duration-300">
-                      {React.createElement(item.icon, { className: "text-3xl text-slate-900" })}
-                  </div>
-                  <h3 className="font-bold text-slate-900 text-xl mb-3">{item.title}</h3>
-                  <p className="text-slate-600 text-sm leading-relaxed font-medium">{item.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
 
         {/* ══════════════════════════════════════════════════════════════
             PRICING / MEMBER DASHBOARD

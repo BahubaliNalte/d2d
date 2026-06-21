@@ -47,11 +47,14 @@ export default function Login() {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      await update(ref(database, 'Users/' + user.uid), {
+      const updates: any = {
         name: user.displayName,
         email: user.email,
-        phone: user.phoneNumber || '',
-      });
+      };
+      if (user.phoneNumber) {
+        updates.phone = user.phoneNumber;
+      }
+      await update(ref(database, 'Users/' + user.uid), updates);
       router.push('/');
     } catch (err: any) {
       setError('Google login failed: ' + err.message);

@@ -33,8 +33,6 @@ export default function ScholarshipsPage() {
   const [caste, setCaste] = useState("");
   const [scholarships, setScholarships] = useState<Scholarship[]>([]);
   const [selectedScholarship, setSelectedScholarship] = useState<Scholarship | null>(null);
-  const [email, setEmail] = useState("");
-  const [subscribed, setSubscribed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -77,16 +75,6 @@ export default function ScholarshipsPage() {
       (s.name && s.name.toLowerCase().includes(caste.toLowerCase()))
     );
   });
-
-  const handleNotify = () => {
-    if (email) {
-      setSubscribed(true);
-      setTimeout(() => {
-        setSubscribed(false);
-        setEmail("");
-      }, 3000);
-    }
-  };
 
   return (
     <main className="min-h-screen bg-white px-6 py-16 md:px-20 font-poppins">

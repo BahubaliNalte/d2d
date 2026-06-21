@@ -1,12 +1,93 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { database, auth } from "@/lib/firebase";
-import { ref, onValue, get, set } from "firebase/database";
+import { ref, get, set } from "firebase/database";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRequireAuth } from "@/lib/useRequireAuth";
+import { getCollegesFromDb } from "@/lib/collegesCache";
+import CollegePrintReport from "@/components/CollegePrintReport";
+
+// Searchable dropdown component
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+  required,
+}: {
+  options: string[];
+  value: string;
+  onChange: (val: string) => void;
+  placeholder: string;
+  required?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref2 = useRef<HTMLDivElement>(null);
+
+  const filtered = query
+    ? options.filter((o) => o.toLowerCase().includes(query.toLowerCase()))
+    : options;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref2.current && !ref2.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref2} className="relative w-full">
+      <div
+        className={`flex items-center border rounded-xl bg-white px-3 py-2.5 cursor-text ${open ? "border-slate-500 ring-2 ring-slate-100" : "border-slate-200"
+          } transition`}
+        onClick={() => setOpen(true)}
+      >
+        <input
+          className="flex-1 outline-none text-sm text-slate-800 bg-transparent placeholder:text-slate-400 min-w-0"
+          placeholder={value || placeholder}
+          value={open ? query : ""}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          required={required && !value}
+        />
+        {value && !open && (
+          <span className="text-sm text-slate-700 truncate flex-1">{value}</span>
+        )}
+        <svg className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {value && (
+            <button
+              type="button"
+              onClick={() => { onChange(""); setQuery(""); setOpen(false); }}
+              className="w-full text-left px-4 py-2.5 text-xs text-slate-400 hover:bg-slate-50 border-b border-slate-100"
+            >Clear selection</button>
+          )}
+          {filtered.length === 0 ? (
+            <p className="px-4 py-3 text-xs text-slate-400">No results found</p>
+          ) : (
+            filtered.map((opt, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => { onChange(opt); setQuery(""); setOpen(false); }}
+                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition ${opt === value ? "font-semibold text-slate-900 bg-slate-50" : "text-slate-700"
+                  }`}
+              >{opt}</button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 interface Cutoff {
   Category: string;
@@ -44,8 +125,8 @@ export default function PredictorPage() {
   const [category, setCategory] = useState("");
   const [usageCount, setUsageCount] = useState(0);
   const [usageLoading, setUsageLoading] = useState(true);
-  const [showPremiumPopup, setShowPremiumPopup] = useState(false);
   const [showAddNumberPopup, setShowAddNumberPopup] = useState(false);
+  const [showPrintReport, setShowPrintReport] = useState(false);
 
   const isPlusMember = isPremium;
   const isLoggedIn = !!user;
@@ -53,28 +134,32 @@ export default function PredictorPage() {
   useEffect(() => {
     if (!user) return;
 
-    // Fetch predictor usage
+    // Fetch predictor usage from dedicated Usage path (avoids touching Users node)
     setUsageLoading(true);
-    get(ref(database, `Users/${user.uid}/predictorUsage`)).then((snap) => {
-      const count = snap.exists() ? snap.val() : 0;
-      setUsageCount(count);
-      setUsageLoading(false);
-    });
+    get(ref(database, `Usage/${FEATURE_KEY}/${user.uid}`))
+      .then((snap) => {
+        const count = snap.exists() ? snap.val() : 0;
+        setUsageCount(count);
+        setUsageLoading(false);
+      })
+      .catch((e) => {
+        console.error("Error fetching predictor usage:", e);
+        setUsageCount(0);
+        setUsageLoading(false);
+      });
   }, [user]);
 
   useEffect(() => {
-    const clgRef = ref(database, "clgdb");
-    const unsubscribe = onValue(clgRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const arr = Array.isArray(data) ? data : Object.values(data);
+    getCollegesFromDb()
+      .then((arr) => {
         setColleges(arr as College[]);
-      } else {
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to read clgdb:", err);
         setColleges([]);
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
+        setLoading(false);
+      });
   }, []);
 
   // Sort streams and locations alphabetically
@@ -97,9 +182,9 @@ export default function PredictorPage() {
     "NT(D)": ["GNTD", "LNTD"],
     "OPEN / GENERAL": ["GOPEN", "LOPEN", "PWD-O", "GORD"],
     EWS: ["EWS"],
-    "Minority": ["MI"], 
-    "PWD (Disability)": ["PWD-O", "PWDA-SEBC", "PWDR-OBC", "PWDR-SC", "PWDR-SEBC" ,"PWD-NTA","NTB","NTC","NTA","st"],
-    DEFENCE: ["DEFR-OBC", "DEFR-SC", "DEFR-ST", "DEFR-SEBC", "DEFR-NTA", "DEFR-NTB", "DEFR-NTC", "DEFR-NTD" , "DEFA-OBC"]
+    "Minority": ["MI"],
+    "PWD (Disability)": ["PWD-O", "PWDA-SEBC", "PWDR-OBC", "PWDR-SC", "PWDR-SEBC", "PWD-NTA", "NTB", "NTC", "NTA", "st"],
+    DEFENCE: ["DEFR-OBC", "DEFR-SC", "DEFR-ST", "DEFR-SEBC", "DEFR-NTA", "DEFR-NTB", "DEFR-NTC", "DEFR-NTD", "DEFA-OBC"]
   };
   const mainCategories = Object.keys(mainCategoryMap);
 
@@ -255,7 +340,7 @@ export default function PredictorPage() {
 
   // Extended list of Maharashtra cities including new entries from user
   const maharashtraCities = [
-    "Ahmednagar", "Akkalkuwa", "Akluj", "Akola", "Ambejogai", "Amravati", "Andheri", "Aurangabad", "Babulgaon", "Badlapur", "Badnera", "Badravati", "Bamni", "Baramati", "Barshi", "Beed", "Bhandara", "Bhandars", "Bhanders", "Bhima", "Bhor", "Bhusawal", "Boisar", "Buldhana", "Chandrapur", "Chikhali", "Deorukh", "Dharashiv", "Dhule", "Dumbarwadi", "Egaon", "Faizpur", "Falzpur", "Gadhinglaj", "Hagpur", "Haveli", "Indapur","Jalgaon", "Jalna", "Jaysingpur", "Kalyan", "Kankavli", "Karad", "Karjat", "Khurd", "Kolhapur", "Kopargaon", "Kuran", "Lakoll", "Latur", "Lonavala", "Lonere", "Mandal", "Miraj", "Mumbai", "Nagar",  "Nagpur", "Nanded", "Nandurbar", "Narhe", "Nashik", "Nepti", "Nile", "Ohar", "Palghar", "Pandharpur", "Panhala", "Paniv", "Panvel", "Parbhani", "Pisoli", "Pune", "Raigad", "Ramtek", "Ratnagiri", "Ravet","Sakoll", "Sambhajinagar",   "Sangamner", "Sangli", "Sangola", "Sasewadi", "Satara", "Sawantwadi", "Sevagram", "Shahapur", "Shegaon", "Shirgaon", "Shirpur", "Sindhi", "Sinnar", "Solapur", "Sukhall",  "Thane", "Tuljapur", "Ulhasnagar",  "Vasai", "Wadwadi", "Waghall", "Wagholi", "Warananagar", "Wardha", "Warghe", "Washim", "Yadrav", "Yavatmal", "Yelgaon"
+    "Ahmednagar", "Akkalkuwa", "Akluj", "Akola", "Ambejogai", "Amravati", "Andheri", "Aurangabad", "Babulgaon", "Badlapur", "Badnera", "Badravati", "Bamni", "Baramati", "Barshi", "Beed", "Bhandara", "Bhandars", "Bhanders", "Bhima", "Bhor", "Bhusawal", "Boisar", "Buldhana", "Chandrapur", "Chikhali", "Deorukh", "Dharashiv", "Dhule", "Dumbarwadi", "Egaon", "Faizpur", "Falzpur", "Gadhinglaj", "Hagpur", "Haveli", "Indapur", "Jalgaon", "Jalna", "Jaysingpur", "Kalyan", "Kankavli", "Karad", "Karjat", "Khurd", "Kolhapur", "Kopargaon", "Kuran", "Lakoll", "Latur", "Lonavala", "Lonere", "Mandal", "Miraj", "Mumbai", "Nagar", "Nagpur", "Nanded", "Nandurbar", "Narhe", "Nashik", "Nepti", "Nile", "Ohar", "Palghar", "Pandharpur", "Panhala", "Paniv", "Panvel", "Parbhani", "Pisoli", "Pune", "Raigad", "Ramtek", "Ratnagiri", "Ravet", "Sakoll", "Sambhajinagar", "Sangamner", "Sangli", "Sangola", "Sasewadi", "Satara", "Sawantwadi", "Sevagram", "Shahapur", "Shegaon", "Shirgaon", "Shirpur", "Sindhi", "Sinnar", "Solapur", "Sukhall", "Thane", "Tuljapur", "Ulhasnagar", "Vasai", "Wadwadi", "Waghall", "Wagholi", "Warananagar", "Wardha", "Warghe", "Washim", "Yadrav", "Yavatmal", "Yelgaon"
   ].sort((a, b) => a.localeCompare(b));
 
   const handlePredict = async () => {
@@ -283,28 +368,17 @@ export default function PredictorPage() {
     }
 
     if (!isPlusMember) {
-      if (usageCount >= 5) {
-        // Mark that the user reached the free limit so we can show
-        // an upgrade prompt when they return to this feature.
-        try {
-          if (typeof window !== "undefined") {
-            localStorage.setItem(`limitHit:${FEATURE_KEY}`, Date.now().toString());
-          }
-          const user = auth.currentUser;
-          if (user) {
-            set(ref(database, `Users/${user.uid}/limitHits/${FEATURE_KEY}`), true);
-          }
-        } catch (e) {
-          // best-effort only
-        }
-        setShowPremiumPopup(true);
-        return;
-      }
-      // Increment usage count
+      // Increment usage count (no hard limit)
       const newCount = usageCount + 1;
       const user = auth.currentUser;
       if (user) {
-        set(ref(database, `Users/${user.uid}/predictorUsage`), newCount);
+        set(ref(database, `Usage/${FEATURE_KEY}/${user.uid}`), newCount).catch((err) => {
+          console.warn("Write to Usage path failed, trying Users/<uid>/usage fallback:", err);
+          // Fallback: try writing under the user's profile node (may be allowed by rules)
+          return set(ref(database, `Users/${user.uid}/usage/${FEATURE_KEY}`), newCount).catch((e2) => {
+            console.error("Fallback write also failed:", e2);
+          });
+        });
       }
       setUsageCount(newCount);
     }
@@ -351,22 +425,22 @@ export default function PredictorPage() {
       const matchesRank = score !== null ? (minRank !== null && score <= minRank) : true;
       return matchesBranch && matchesLocation && matchesRank;
     })
-    // Sort: exact match first, then by closest higher rank, then others
-    .sort((a, b) => {
-      const userRank = score || 0;
-      const aRank = (a as any)._minRank;
-      const bRank = (b as any)._minRank;
-      // Exact match comes first
-      if (aRank === userRank && bRank !== userRank) return -1;
-      if (bRank === userRank && aRank !== userRank) return 1;
-      // Then by how close the rank is (ascending order)
-      if (aRank !== null && bRank !== null) {
-        return Math.abs(userRank - aRank) - Math.abs(userRank - bRank);
-      }
-      if (aRank === null) return 1;
-      if (bRank === null) return -1;
-      return 0;
-    });
+      // Sort: exact match first, then by closest higher rank, then others
+      .sort((a, b) => {
+        const userRank = score || 0;
+        const aRank = (a as any)._minRank;
+        const bRank = (b as any)._minRank;
+        // Exact match comes first
+        if (aRank === userRank && bRank !== userRank) return -1;
+        if (bRank === userRank && aRank !== userRank) return 1;
+        // Then by how close the rank is (ascending order)
+        if (aRank !== null && bRank !== null) {
+          return Math.abs(userRank - aRank) - Math.abs(userRank - bRank);
+        }
+        if (aRank === null) return 1;
+        if (bRank === null) return -1;
+        return 0;
+      });
     setPredictions(result.slice(0, 20));
     setSubmitted(true);
 
@@ -376,21 +450,10 @@ export default function PredictorPage() {
   // When the page mounts or usageCount changes, if the user previously hit
   // the limit for this feature, show the upgrade popup so they see the CTA
   // when they come back to the feature.
-  useEffect(() => {
-    try {
-      if (!isPlusMember && isLoggedIn && usageCount >= 5) {
-        const wasHit = typeof window !== "undefined" && localStorage.getItem(`limitHit:${FEATURE_KEY}`);
-        if (wasHit) {
-          setShowPremiumPopup(true);
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, [isPlusMember, isLoggedIn, usageCount]);
+  // No limit-based popup behavior needed anymore.
 
-  // Show loading spinner while auth or usage count resolves (prevents flash of content)
-  if (authLoading || (user && usageLoading)) {
+  // Show loading spinner while auth resolves (prevents flash of content)
+  if (authLoading) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white">
         <div className="w-8 h-8 rounded-full border-[3px] border-slate-200 border-t-slate-900 animate-spin" />
@@ -399,272 +462,307 @@ export default function PredictorPage() {
   }
 
   return (
-    <main className="min-h-screen bg-white px-6 md:px-20 py-16 font-poppins">
-      <motion.h1
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
-        className="text-4xl font-bold text-center text-slate-900 mb-10"
-      >
-        Rank Wise Prediction using Our AI Model
-      </motion.h1>
-
-
-
-      {/* Free Usage Counter - Only show for non-premium users */}
-      {isLoggedIn && !isPlusMember && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-3xl mx-auto mb-8 bg-slate-50 border border-slate-200 rounded-2xl p-4"
+    <main className="min-h-screen bg-slate-50">
+      {/* Mobile-only: sticky top bar with back button */}
+      <div className="md:hidden bg-white border-b border-slate-100 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
+        <Link
+          href="/counselling"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-700">Free Predictions Used</span>
-            <span className="text-sm font-bold text-slate-900">{usageCount} / 5</span>
-          </div>
-          <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
-            <div 
-              className="bg-slate-900 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(usageCount / 5) * 100}%` }}
-            ></div>
-          </div>
-          {usageCount >= 5 && (
-            <p className="text-xs text-slate-600 mt-2">You've reached your free limit. <Link href="/counselling/premium" className="text-slate-900 font-bold hover:underline">Upgrade to Premium</Link> for unlimited predictions.</p>
-          )}
-        </motion.div>
-      )}
-
-      {/* Input Form */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200">
-        <input
-          type="number"
-          step="1"
-          placeholder="Enter Your Rank"
-          value={score || ""}
-          onChange={(e) => setScore(e.target.value === "" ? null : parseInt(e.target.value))}
-          className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          required
-        />
-        <select
-          value={mainBranch}
-          onChange={e => {
-            setMainBranch(e.target.value);
-            setSubBranch("");
-          }}
-          className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          required
-        >
-          <option value="">Select Main Branch</option>
-          {mainBranches.map((mb, i) => (
-            <option key={i} value={mb}>{mb}</option>
-          ))}
-        </select>
-        {mainBranch && (
-          <select
-            value={subBranch}
-            onChange={e => setSubBranch(e.target.value)}
-            className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          >
-            <option value="">Select Sub Branch (optional)</option>
-            {mainBranchMap[mainBranch].map((sb, i) => (
-              <option key={i} value={sb}>{sb}</option>
-            ))}
-          </select>
-        )}
-        <select
-          value={mainCategory}
-          onChange={e => {
-            setMainCategory(e.target.value);
-            setCategory("");
-          }}
-          className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          required
-        >
-          <option value="">Select Main Category</option>
-          {mainCategories.map((cat, i) => (
-            <option key={i} value={cat}>{cat}</option>
-          ))}
-        </select>
-        {mainCategory && (
-          <select
-            value={category}
-            onChange={e => setCategory(e.target.value)}
-            className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          >
-            <option value="">Select Sub Category</option>
-            {mainCategoryMap[mainCategory].map((subcat, i) => (
-              <option key={i} value={subcat}>{subcat}</option>
-            ))}
-          </select>
-        )}
-        <select
-          value={location}
-          onChange={e => setLocation(e.target.value)}
-          className="p-3.5 border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none transition w-full text-slate-800 bg-white"
-          required
-        >
-          <option value="">Select City</option>
-          {maharashtraCities.map((loc, i) => (
-            <option key={i} value={loc}>{loc}</option>
-          ))}
-        </select>
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          Back
+        </Link>
+        <span className="text-slate-300">|</span>
+        <span className="text-sm font-bold text-slate-800 truncate">Predictor</span>
       </div>
 
-      <button
-        onClick={handlePredict}
-        className="bg-slate-900 hover:bg-black text-white px-8 py-3.5 rounded-xl shadow-md transition duration-300 mx-auto block font-semibold"
-        disabled={loading || !score || !mainBranch || !mainCategory || !location}
-      >
-        Predict Colleges
-      </button>
-
-      {/* Result */}
-      {loading ? (
-        <p className="text-center text-slate-500 mt-10">Loading colleges...</p>
-      ) : !score || !mainBranch || !mainCategory || !location ? (
-        <p className="text-center text-slate-500 mt-10 font-semibold bg-slate-50 py-3 rounded-2xl border border-slate-200 max-w-lg mx-auto text-sm">Please fill in Rank, Branch, Main Category, and City to see predictions.</p>
-      ) : submitted && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="mt-10"
+      {/* Heading shown on all screens */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-8 pt-6 md:pt-16 pb-2 md:pb-4 text-center">
+        <motion.h1
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="text-2xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 mb-2 md:mb-4"
         >
-          <h3 className="text-2xl font-semibold text-center text-slate-900 mb-6">
-            {predictions.length > 0 ? "Colleges Matching Your Score" : "No Matches Found"}
-          </h3>
+          Rank Wise College Prediction using Our AI Model
+        </motion.h1>
+        <p className="text-slate-500 text-sm sm:text-base">Enter your details below to predict eligible engineering colleges</p>
+      </div>
 
-          <div className="w-full flex flex-col gap-6">
-            {predictions.map((college, index) => {
-              const listNumber = index + 1;
-              // If both subBranch and category are selected, show only that cutoff and branch
-              if (subBranch && category) {
-                // Only show if this college's course matches the subBranch exactly
-                if (college["Course Name"] !== subBranch) return null;
-                const selectedCutoff = college.Cutoffs && college.Cutoffs.find((cut) => cut.Category === category);
-                return (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.04 }}
-                    viewport={{ once: true }}
-                    className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
-                  >
-                    <div className="flex-1 w-full">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-lg font-bold text-slate-900">{listNumber}.</span>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                          <span>{college["College Name"]}</span>
-                          <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
-                        </h3>
-                      </div>
-                      <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
-                        <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
-                        <span>🎓 <span className="font-semibold text-slate-700">{college["Course Name"]}</span></span>
-                      </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                        <span className="font-semibold text-slate-600">Cutoff ({category}):</span>
-                        {selectedCutoff ? (
-                          <span className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
-                            {selectedCutoff.Score} <span className="text-slate-500 font-normal">(Rank: {selectedCutoff.Rank})</span>
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-sm">No cutoff data for this category.</span>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              } else if (category) {
-                // If only sub category is selected, show only that cutoff for all branches
-                const selectedCutoff = college.Cutoffs && college.Cutoffs.find((cut) => cut.Category === category);
-                return (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.04 }}
-                    viewport={{ once: true }}
-                    className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
-                  >
-                    <div className="flex-1 w-full">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-lg font-bold text-slate-900">{listNumber}.</span>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                          <span>{college["College Name"]}</span>
-                          <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
-                        </h3>
-                      </div>
-                      <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
-                        <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
-                        <span>🎓 <span className="font-semibold text-slate-700">{normalizeBranch(college["Course Name"])}</span></span>
-                      </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                        <span className="font-semibold text-slate-600">Cutoff ({category}):</span>
-                        {selectedCutoff ? (
-                          <span className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
-                            {selectedCutoff.Score} <span className="text-slate-500 font-normal">(Rank: {selectedCutoff.Rank})</span>
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-sm">No cutoff data for this category.</span>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              } else if (mainCategory && mainCategoryMap[mainCategory]) {
-                // If only mainCategory is selected, show all subcategory cutoffs for this main category
-                const subCategories = mainCategoryMap[mainCategory];
-                const cutoffs = (college.Cutoffs || []).filter((cut) => subCategories.includes(cut.Category));
-                return (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.04 }}
-                    viewport={{ once: true }}
-                    className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
-                  >
-                    <div className="flex-1 w-full">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-lg font-bold text-slate-900">{listNumber}.</span>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
-                          <span>{college["College Name"]}</span>
-                          <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
-                        </h3>
-                      </div>
-                      <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
-                        <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
-                        <span>🎓 <span className="font-semibold text-slate-700">{college["Course Name"]}</span></span>
-                      </div>
-                      <div className="flex flex-col gap-1 mb-2">
-                        <span className="font-semibold text-slate-600">Cutoffs ({mainCategory}):</span>
-                        {cutoffs.length > 0 ? (
-                          <div className="flex flex-wrap gap-2 mt-1">
-                            {cutoffs.map((cut, i) => (
-                              <span key={i} className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
-                                {cut.Category}: {cut.Score} <span className="text-slate-500 font-normal">(Rank: {cut.Rank})</span>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-sm">No cutoff data for these subcategories.</span>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              }
-              return null;
-            })}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 md:py-6">
+        {/* Input Form */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200">
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Rank *</label>
+            <input
+              type="number"
+              step="1"
+              placeholder="Enter Your Rank"
+              value={score || ""}
+              onChange={(e) => setScore(e.target.value === "" ? null : parseInt(e.target.value))}
+              className="px-3 py-2.5 border border-slate-200 focus:border-slate-500 focus:ring-2 focus:ring-slate-100 rounded-xl outline-none text-sm text-slate-800 bg-white w-full transition"
+              required
+            />
           </div>
-        </motion.div>
-      )}
 
-      {/* ── Premium Popup ── */}
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Main Branch *</label>
+            <SearchableSelect
+              options={mainBranches}
+              value={mainBranch}
+              onChange={(val) => {
+                setMainBranch(val);
+                setSubBranch("");
+              }}
+              placeholder="Search main branch..."
+              required
+            />
+          </div>
+
+          {mainBranch && (
+            <div className="col-span-1">
+              <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Sub Branch <span className="text-slate-300">(optional)</span></label>
+              <SearchableSelect
+                options={mainBranchMap[mainBranch] || []}
+                value={subBranch}
+                onChange={(val) => setSubBranch(val)}
+                placeholder="Search sub branch..."
+              />
+            </div>
+          )}
+
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Main Category *</label>
+            <SearchableSelect
+              options={mainCategories}
+              value={mainCategory}
+              onChange={(val) => {
+                setMainCategory(val);
+                setCategory("");
+              }}
+              placeholder="Search main category..."
+              required
+            />
+          </div>
+
+          {mainCategory && (
+            <div className="col-span-1">
+              <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">Sub Category <span className="text-slate-300">(optional)</span></label>
+              <SearchableSelect
+                options={mainCategoryMap[mainCategory] || []}
+                value={category}
+                onChange={(val) => setCategory(val)}
+                placeholder="Search sub category..."
+              />
+            </div>
+          )}
+
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-slate-500 mb-1 ml-1">City *</label>
+            <SearchableSelect
+              options={maharashtraCities}
+              value={location}
+              onChange={(val) => setLocation(val)}
+              placeholder="Search city..."
+              required
+            />
+          </div>
+
+          <div className="col-span-1 sm:col-span-2 mt-2">
+            <button
+              onClick={handlePredict}
+              disabled={loading || !score || !mainBranch || !mainCategory || !location}
+              className="w-full bg-slate-900 hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold text-sm transition duration-300 flex items-center justify-center gap-2"
+            >
+              Predict Colleges
+            </button>
+          </div>
+        </div>
+
+        {/* Result */}
+        {loading ? (
+          <p className="text-center text-slate-500 mt-10">Loading colleges...</p>
+        ) : !score || !mainBranch || !mainCategory || !location ? (
+          <p className="text-center text-slate-500 mt-10 font-semibold bg-slate-50 py-3 rounded-2xl border border-slate-200 max-w-lg mx-auto text-sm">Please fill in Rank, Branch, Main Category, and City to see predictions.</p>
+        ) : submitted && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="mt-10"
+          >
+            <h3 className="text-2xl font-semibold text-center text-slate-900 mb-6">
+              {predictions.length > 0 ? "Colleges Matching Your Score" : "No Matches Found"}
+            </h3>
+
+            <div className="w-full flex flex-col gap-6">
+              {/* Download / Print Report Button */}
+              {predictions.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-600">{predictions.length} colleges found</p>
+                  <button
+                    onClick={() => setShowPrintReport(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                    Download / Print PDF
+                  </button>
+                </div>
+              )}
+
+              {/* Print Report Modal */}
+              {showPrintReport && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 overflow-y-auto p-4 flex items-start justify-center pt-10">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">
+                    <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                      <h2 className="text-base font-bold text-slate-900">College Prediction Report</h2>
+                      <button onClick={() => setShowPrintReport(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div className="p-6 overflow-y-auto max-h-[80vh]">
+                      <CollegePrintReport
+                        colleges={predictions}
+                        category={category || mainCategory}
+                        branch={subBranch || mainBranch}
+                        city={location}
+                        scoreLabel={score ? `Rank ${score}` : undefined}
+                        onClose={() => setShowPrintReport(false)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {predictions.map((college, index) => {
+                const listNumber = index + 1;
+                // If both subBranch and category are selected, show only that cutoff and branch
+                if (subBranch && category) {
+                  // Only show if this college's course matches the subBranch exactly
+                  if (college["Course Name"] !== subBranch) return null;
+                  const selectedCutoff = college.Cutoffs && college.Cutoffs.find((cut) => cut.Category === category);
+                  return (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.04 }}
+                      viewport={{ once: true }}
+                      className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
+                    >
+                      <div className="flex-1 w-full">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg font-bold text-slate-900">{listNumber}.</span>
+                          <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
+                            <span>{college["College Name"]}</span>
+                            <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
+                          </h3>
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
+                          <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
+                          <span>🎓 <span className="font-semibold text-slate-700">{college["Course Name"]}</span></span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                          <span className="font-semibold text-slate-600">Cutoff ({category}):</span>
+                          {selectedCutoff ? (
+                            <span className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
+                              {selectedCutoff.Score} <span className="text-slate-500 font-normal">(Rank: {selectedCutoff.Rank})</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-sm">No cutoff data for this category.</span>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                } else if (category) {
+                  // If only sub category is selected, show only that cutoff for all branches
+                  const selectedCutoff = college.Cutoffs && college.Cutoffs.find((cut) => cut.Category === category);
+                  return (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.04 }}
+                      viewport={{ once: true }}
+                      className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
+                    >
+                      <div className="flex-1 w-full">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg font-bold text-slate-900">{listNumber}.</span>
+                          <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
+                            <span>{college["College Name"]}</span>
+                            <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
+                          </h3>
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
+                          <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
+                          <span>🎓 <span className="font-semibold text-slate-700">{normalizeBranch(college["Course Name"])}</span></span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                          <span className="font-semibold text-slate-600">Cutoff ({category}):</span>
+                          {selectedCutoff ? (
+                            <span className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
+                              {selectedCutoff.Score} <span className="text-slate-500 font-normal">(Rank: {selectedCutoff.Rank})</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-sm">No cutoff data for this category.</span>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                } else if (mainCategory && mainCategoryMap[mainCategory]) {
+                  // If only mainCategory is selected, show all subcategory cutoffs for this main category
+                  const subCategories = mainCategoryMap[mainCategory];
+                  const cutoffs = (college.Cutoffs || []).filter((cut) => subCategories.includes(cut.Category));
+                  return (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.04 }}
+                      viewport={{ once: true }}
+                      className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col md:flex-row items-start md:items-center p-5 md:p-8 gap-4 md:gap-8"
+                    >
+                      <div className="flex-1 w-full">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg font-bold text-slate-900">{listNumber}.</span>
+                          <h3 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
+                            <span>{college["College Name"]}</span>
+                            <span className="inline-block bg-slate-100 text-slate-800 text-xs font-semibold px-2 py-1 rounded-full ml-2">{college.Status}</span>
+                          </h3>
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-slate-500 text-base mb-2">
+                          <span>📍 <span className="font-semibold text-slate-700">{college.City}</span></span>
+                          <span>🎓 <span className="font-semibold text-slate-700">{college["Course Name"]}</span></span>
+                        </div>
+                        <div className="flex flex-col gap-1 mb-2">
+                          <span className="font-semibold text-slate-600">Cutoffs ({mainCategory}):</span>
+                          {cutoffs.length > 0 ? (
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {cutoffs.map((cut, i) => (
+                                <span key={i} className="bg-slate-100 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
+                                  {cut.Category}: {cut.Score} <span className="text-slate-500 font-normal">(Rank: {cut.Rank})</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-sm">No cutoff data for these subcategories.</span>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          </motion.div>
+        )}
+      </div>
+
       <AnimatePresence>
-        {showPremiumPopup && (
+        {showAddNumberPopup && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 px-4"
@@ -673,45 +771,15 @@ export default function PredictorPage() {
               initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
               className="bg-white p-8 md:p-10 rounded-3xl shadow-2xl w-full max-w-lg border border-slate-200 text-center relative overflow-hidden"
             >
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-slate-700 to-slate-900"></div>
-              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6 text-slate-900 shadow-sm border border-slate-200 text-3xl">
-                👑
-              </div>
-              <h3 className="text-3xl font-black mb-3 text-slate-900 tracking-tight">Free Limit Reached</h3>
-              <p className="mb-8 text-base text-slate-500 leading-relaxed font-medium px-4">
-                You have used your 5 free AI predictions. Upgrade to Premium to get unlimited access, full CAP round support, and 1:1 expert mentorship.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/counselling/premium"
-                  className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900 hover:bg-black text-white font-bold transition-all shadow-lg text-sm flex items-center justify-center gap-2">
-                  Upgrade to Premium
-                </Link>
-                <button onClick={() => setShowPremiumPopup(false)}
-                  className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 font-bold transition-colors text-sm">
-                  Cancel
-                </button>
+              <h3 className="text-2xl font-bold mb-3 text-slate-900">Mobile Number Required</h3>
+              <p className="mb-6 text-sm text-slate-600">Please add your mobile number in your profile to use this feature.</p>
+              <div className="flex gap-4 justify-center">
+                <Link href="/profile" className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold">Add Number</Link>
+                <button onClick={() => setShowAddNumberPopup(false)} className="px-6 py-3 rounded-xl border">Cancel</button>
               </div>
             </motion.div>
           </motion.div>
-            )}
-            {showAddNumberPopup && (
-              <motion.div
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 px-4"
-              >
-                <motion.div
-                  initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
-                  className="bg-white p-8 md:p-10 rounded-3xl shadow-2xl w-full max-w-lg border border-slate-200 text-center relative overflow-hidden"
-                >
-                  <h3 className="text-2xl font-bold mb-3 text-slate-900">Mobile Number Required</h3>
-                  <p className="mb-6 text-sm text-slate-600">Please add your mobile number in your profile to use this feature.</p>
-                  <div className="flex gap-4 justify-center">
-                    <Link href="/profile" className="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold">Add Number</Link>
-                    <button onClick={() => setShowAddNumberPopup(false)} className="px-6 py-3 rounded-xl border">Cancel</button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
+        )}
       </AnimatePresence>
     </main>
   );

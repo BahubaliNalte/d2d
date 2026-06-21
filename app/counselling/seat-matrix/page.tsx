@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { database } from "@/lib/firebase";
-import { ref, onValue } from "firebase/database";
+import { getCollegesFromDb } from "@/lib/collegesCache";
 import { useEffect, useState, useMemo } from "react";
 import { useRequireAuth } from "@/lib/useRequireAuth";
 import {
@@ -105,18 +104,16 @@ export default function SeatMatrixCutoffPage() {
 	const [selectedForCompare, setSelectedForCompare] = useState<College[]>([]);
 
 	useEffect(() => {
-		const clgRef = ref(database, "clgdb");
-		const unsubscribe = onValue(clgRef, (snapshot) => {
-			const data = snapshot.val();
-			if (data) {
-				const arr = Array.isArray(data) ? data : Object.values(data);
+		getCollegesFromDb()
+			.then((arr) => {
 				setColleges(arr as College[]);
-			} else {
+				setLoading(false);
+			})
+			.catch((err) => {
+				console.error("Failed to read clgdb:", err);
 				setColleges([]);
-			}
-			setLoading(false);
-		});
-		return () => unsubscribe();
+				setLoading(false);
+			});
 	}, []);
 
 	// Filter options

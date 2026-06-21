@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { auth, database } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { ref, set, get, ref as dbRef } from 'firebase/database';
+import { ref, set, get, update, ref as dbRef } from 'firebase/database';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaArrowLeft, FaUser, FaEnvelope, FaPhone, FaLock, FaEye, FaEyeSlash, FaCheck } from 'react-icons/fa';
@@ -61,7 +61,7 @@ export default function Signup() {
       const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
       const user = userCredential.user;
       await updateProfile(user, { displayName: form.name });
-      await set(ref(database, 'Users/' + user.uid), {
+      await update(ref(database, 'Users/' + user.uid), {
         name: form.name,
         email: form.email,
         phone: form.phone,
