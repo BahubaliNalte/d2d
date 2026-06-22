@@ -235,8 +235,17 @@ export default function PremiumPage() {
       }
     };
 
+    const rzpKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY;
+    if (!rzpKey) {
+      console.error("NEXT_PUBLIC_RAZORPAY_KEY is not set in environment variables.");
+      toast.error("Payment configuration error. Please contact support.");
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      return;
+    }
+
     const options = {
-      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY || "",
+      key: rzpKey,
       amount: serverPrice * 100,
       currency: "INR",
       name: "Diploma2Degree Premium",
@@ -254,11 +263,28 @@ export default function PremiumPage() {
       },
     };
 
+    // Helper to dynamically load script if not already present
+    const loadScript = (src: string) => {
+      return new Promise((resolve) => {
+        if (typeof window !== "undefined" && (window as any).Razorpay) {
+          resolve(true);
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = src;
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+      });
+    };
+
+    const isLoaded = await loadScript("https://checkout.razorpay.com/v1/checkout.js");
+
     // @ts-ignore
-    if (typeof window !== "undefined" && window.Razorpay) {
+    if (isLoaded && typeof window !== "undefined" && window.Razorpay) {
       new window.Razorpay(options).open();
     } else {
-      toast.error("Payment gateway is loading. Please try again in a moment.");
+      toast.error("Failed to load payment gateway. Please check your internet connection.");
       isProcessingRef.current = false;
       setIsProcessing(false);
     }
@@ -268,8 +294,7 @@ export default function PremiumPage() {
     <main className="min-h-screen bg-white overflow-x-hidden">
       <Script
         src="https://checkout.razorpay.com/v1/checkout.js"
-        strategy="beforeInteractive"
-        onLoad={() => setRazorpayReady(true)}
+        strategy="lazyOnload"
       />
 
       {/* ── HERO SECTION ── */}
