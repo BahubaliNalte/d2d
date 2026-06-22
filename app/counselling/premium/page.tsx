@@ -67,6 +67,7 @@ export default function PremiumPage() {
   const [stories, setStories] = useState(fallbackStories);
   const [isProcessing, setIsProcessing] = useState(false);
   const [cachedPhone, setCachedPhone] = useState<string | null>(null);
+  const [razorpayReady, setRazorpayReady] = useState(false);
   const isProcessingRef = useRef(false);
   const router = useRouter();
 
@@ -254,12 +255,22 @@ export default function PremiumPage() {
     };
 
     // @ts-ignore
-    new window.Razorpay(options).open();
+    if (typeof window !== "undefined" && window.Razorpay) {
+      new window.Razorpay(options).open();
+    } else {
+      toast.error("Payment gateway is loading. Please try again in a moment.");
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+    }
   }, [router]);
 
   return (
     <main className="min-h-screen bg-white overflow-x-hidden">
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+      <Script
+        src="https://checkout.razorpay.com/v1/checkout.js"
+        strategy="beforeInteractive"
+        onLoad={() => setRazorpayReady(true)}
+      />
 
       {/* ── HERO SECTION ── */}
       <section className="relative min-h-screen flex items-center justify-center pt-28 pb-16 px-6 md:px-12 lg:px-20 bg-slate-50 border-b border-slate-200 overflow-hidden">
