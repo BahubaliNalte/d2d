@@ -376,6 +376,8 @@ export default function CollegeListPage() {
     "Production Engineering[Sandwich]": "Production Engineering",
     "Robotics and Automation": "Robotics and Automation",
     "Robotics and Artificial Intelligence": "Robotics and Artificial Intelligence",
+    "Biomedical Engineering": "Biomedical Engineering",
+    "Bio Medical Engineering": "Biomedical Engineering",
     // ... add more as needed ...
   };
 

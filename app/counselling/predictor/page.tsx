@@ -285,6 +285,8 @@ export default function PredictorPage() {
     "Production Engineering[Sandwich]": "Production Engineering",
     "Robotics and Automation": "Robotics and Automation",
     "Robotics and Artificial Intelligence": "Robotics and Artificial Intelligence",
+    "Biomedical Engineering": "Biomedical Engineering",
+    "Bio Medical Engineering": "Biomedical Engineering",
   };
 
   // Reverse mapping: full branch name -> all possible variants
